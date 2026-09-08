@@ -32,7 +32,9 @@ async function criarCliente(apiKey) {
 
 // ---------------------------------------------------------------- esquemas
 
-const inteiro = { type: 'integer', minimum: 0 };
+// A API não aceita restrições numéricas (minimum/maximum) no schema de structured outputs.
+const inteiro = { type: 'integer' };
+const confianca = { type: 'number', description: 'certeza da leitura, de 0 a 1' };
 
 const ESQUEMA_BANDEJA = {
   type: 'object',
@@ -49,7 +51,7 @@ const ESQUEMA_BANDEJA = {
           produto_id: { type: 'string', enum: [...IDS_VALIDOS, 'nao_identificado'] },
           rotulo_visto: { type: 'string', description: 'como o item aparece na foto, em português' },
           quantidade: inteiro,
-          confianca: { type: 'number', minimum: 0, maximum: 1 },
+          confianca,
         },
       },
     },
@@ -83,7 +85,7 @@ const ESQUEMA_PLANILHA = {
           producao_2: inteiro,
           producao_3: inteiro,
           perdido: inteiro,
-          confianca: { type: 'number', minimum: 0, maximum: 1 },
+          confianca,
         },
       },
     },
