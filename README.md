@@ -43,10 +43,17 @@ python3 -m http.server 8000
 Sim — dá para colocar no ar direto pelo GitHub, sem contratar hospedagem, e só depois apontar
 para um domínio/hospedagem definitiva.
 
-1. No repositório: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-2. Faça push desta branch. O workflow [`.github/workflows/pages.yml`](.github/workflows/pages.yml)
-   publica a pasta inteira automaticamente.
-3. A URL sai em **Actions → Publicar no GitHub Pages** (formato `https://<usuário>.github.io/<repositório>/`).
+1. No repositório: **Settings → Pages → Build and deployment → Source: GitHub Actions**
+   (esse passo é manual — o token do Actions não tem permissão para ligar o Pages sozinho).
+2. **Actions → Publicar no GitHub Pages → Run workflow** (ou faça um novo push). O workflow
+   [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publica a pasta inteira.
+3. A URL aparece no fim do run e em **Settings → Pages**
+   (formato `https://<usuário>.github.io/<repositório>/`).
+
+> **Repositório privado:** publicar Pages a partir de um repositório privado exige plano pago
+> (GitHub Pro/Team/Enterprise). No plano gratuito, torne o repositório público
+> (**Settings → General → Change visibility**) — a chave da API **não** fica no código, então o
+> código-fonte pode ser público sem expor credenciais.
 
 Alternativa sem Actions: **Settings → Pages → Source: Deploy from a branch**, escolhendo a branch e a pasta `/ (root)`.
 
