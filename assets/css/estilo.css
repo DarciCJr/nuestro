@@ -233,10 +233,12 @@ table.planilha tbody td:nth-child(6) { background: #fdf1f0; }
 .sincronia:hover { background: rgba(255, 255, 255, .22); }
 .sincronia.alerta { background: #f6c344; border-color: #d9a417; color: #4a3600; }
 
-.col-hora { min-width: 96px; }
+.col-hora { min-width: 108px; }
 .col-hora .titulo-coluna { display: block; font-size: 10px; opacity: .85; }
+.col-hora.coluna-nova { background: #2b6fbd; }
+.col-hora.coluna-nova .titulo-coluna { opacity: 1; color: #ffe08a; }
 .hora-coluna {
-  width: 86px;
+  width: 96px;
   margin-top: 2px;
   padding: 3px 4px;
   border: 1px solid rgba(255, 255, 255, .55);

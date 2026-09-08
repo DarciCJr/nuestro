@@ -31,8 +31,12 @@ A aba **Painel** reúne os controles já cadastrados:
 
 ## Lançamentos por hora e sincronia entre aparelhos
 
-A folha do dia tem **uma coluna por horário de reposição** (botão *Novo horário*). Ao salvar,
-**cada coluna vira um lançamento** guardado em JSON:
+A folha do dia tem **uma coluna por horário de reposição**. Ao salvar, **cada coluna vira um
+lançamento** guardado em JSON — e a folha já abre o **próximo horário em branco**, para a fornada
+seguinte virar um lançamento novo em vez de sobrescrever o anterior. As colunas já gravadas ficam
+marcadas com ✓ (editar ali corrige aquele lançamento; o × exclui de vez, em todos os aparelhos);
+a coluna em amarelo é a que ainda não foi salva. O botão *Novo horário* serve para abrir mais de um
+horário antes de salvar.
 
 ```json
 {

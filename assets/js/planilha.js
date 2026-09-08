@@ -3,17 +3,19 @@
 
 import { SECOES, LINHAS_LIVRES, PRODUTOS_POR_ID } from './produtos.js';
 
-const LIMITE_COLUNAS = 8;
+const LIMITE_COLUNAS = 12;
 
 let elementos = null;
 let aoMudar = () => {};
+let aoRemoverColunaSalva = null;
 let colunasAtuais = [];
 
 // ------------------------------------------------------------------ montagem
 
-export function montarPlanilha(alvos, callbackMudanca = () => {}) {
+export function montarPlanilha(alvos, { aoMudar: callbackMudanca = () => {}, aoRemoverSalva = null } = {}) {
   elementos = alvos;
   aoMudar = callbackMudanca;
+  aoRemoverColunaSalva = aoRemoverSalva;
 
   elementos.corpo.addEventListener('input', (e) => {
     if (e.target.classList.contains('hora-coluna')) {
@@ -33,7 +35,11 @@ export function montarPlanilha(alvos, callbackMudanca = () => {}) {
 
   elementos.cabecalho.addEventListener('click', (e) => {
     const botao = e.target.closest('.remover-coluna');
-    if (botao) removerColuna(botao.dataset.coluna);
+    if (!botao) return;
+    const coluna = colunasAtuais.find((c) => c.id === botao.dataset.coluna);
+    // horário já gravado: quem decide é o app (excluir o lançamento de verdade)
+    if (coluna?.salva && aoRemoverColunaSalva) aoRemoverColunaSalva(coluna);
+    else removerColuna(botao.dataset.coluna);
   });
 }
 
@@ -41,14 +47,31 @@ export const colunas = () => colunasAtuais.map((c) => ({ ...c }));
 
 export function definirColunas(lista) {
   const valores = elementos ? lerValores() : {};
-  colunasAtuais = lista.length ? lista.map((c) => ({ id: c.id, hora: c.hora || '' })) : [novaColuna()];
+  colunasAtuais = lista.length
+    ? lista.map((c) => ({ id: c.id, hora: c.hora || '', salva: Boolean(c.salva) }))
+    : [novaColuna()];
   renderizar();
   escreverValores(valores);
   recalcular();
 }
 
 function novaColuna(hora = horaAgora()) {
-  return { id: crypto.randomUUID(), hora };
+  return { id: crypto.randomUUID(), hora, salva: false };
+}
+
+/**
+ * A folha sempre termina com um horário em branco: assim, a próxima fornada
+ * vira um lançamento novo em vez de sobrescrever o que já foi salvo.
+ */
+export function garantirColunaVazia() {
+  if (colunasAtuais.length >= LIMITE_COLUNAS) return null;
+  const valores = lerValores();
+  const temVazia = colunasAtuais.some((coluna) => !Object.values(valores).some((v) => v.quantidades[coluna.id]));
+  if (temVazia) return null;
+
+  const coluna = novaColuna();
+  definirColunas([...colunasAtuais, coluna]);
+  return coluna;
 }
 
 export function adicionarColuna(hora = horaAgora()) {
@@ -84,8 +107,11 @@ function desenharCabecalho() {
 
   for (const [i, coluna] of colunasAtuais.entries()) {
     const celula = document.createElement('th');
-    celula.className = 'col-hora';
-    celula.innerHTML = `<span class="titulo-coluna">Produção ${i + 1}</span>`;
+    celula.className = `col-hora${coluna.salva ? ' coluna-salva' : ' coluna-nova'}`;
+    celula.title = coluna.salva
+      ? 'Lançamento já salvo — alterar aqui edita esse registro'
+      : 'Horário novo — ao salvar vira um lançamento próprio';
+    celula.innerHTML = `<span class="titulo-coluna">Produção ${i + 1} ${coluna.salva ? '✓' : '•'}</span>`;
 
     const hora = document.createElement('input');
     hora.type = 'time';
@@ -99,7 +125,7 @@ function desenharCabecalho() {
       remover.type = 'button';
       remover.className = 'remover-coluna';
       remover.dataset.coluna = coluna.id;
-      remover.title = 'Remover este horário';
+      remover.title = coluna.salva ? 'Excluir este lançamento' : 'Remover este horário';
       remover.textContent = '×';
       celula.appendChild(remover);
     }
@@ -365,7 +391,9 @@ export function aplicarDia(lancamentos) {
   const producoes = lancamentos.filter((l) => l.tipo !== 'perda').sort((a, b) => (a.hora || '').localeCompare(b.hora || ''));
   const perdas = lancamentos.filter((l) => l.tipo === 'perda');
 
-  colunasAtuais = producoes.length ? producoes.map((l) => ({ id: l.id, hora: l.hora || '' })) : [novaColuna()];
+  colunasAtuais = producoes.length
+    ? producoes.map((l) => ({ id: l.id, hora: l.hora || '', salva: true }))
+    : [novaColuna()];
   renderizar();
   limparTudo();
 
@@ -412,6 +440,7 @@ export function baixarArquivo(nome, conteudo, tipo = 'text/csv;charset=utf-8') {
 export function diaParaCsv({ data, responsavel, observacoes }) {
   const escapar = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const dia = lerDia();
+  dia.colunas = dia.colunas.filter((c) => c.itens.length);
   const cabecalho = ['Produto', ...dia.colunas.map((c, i) => `Produção ${i + 1} (${c.hora || 'sem hora'})`), 'Total', 'Perdido', 'Resultado'];
   const saida = [
     ['Data', data, 'Responsável', responsavel].map(escapar).join(';'),

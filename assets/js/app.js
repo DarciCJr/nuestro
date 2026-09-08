@@ -59,7 +59,7 @@ function iniciar() {
   ligarLogin();
   planilha.montarPlanilha(
     { corpo: $('corpo-planilha'), cabecalho: $('cabecalho-planilha'), rodape: $('rodape-planilha') },
-    marcarAlterado,
+    { aoMudar: marcarAlterado, aoRemoverSalva: excluirLancamentoDaColuna },
   );
   planilha.definirColunas([]);
   $('campo-data').value = new Date().toISOString().slice(0, 10);
@@ -382,6 +382,15 @@ function desenharSincronia() {
 
 // ------------------------------------------------------------------ folha do dia
 
+/** O × de um horário já salvo exclui o lançamento (nos outros aparelhos também). */
+async function excluirLancamentoDaColuna(coluna) {
+  const rotulo = coluna.hora ? `das ${coluna.hora}` : 'deste horário';
+  if (!confirm(`Excluir o lançamento ${rotulo}? Ele some também nos outros aparelhos.`)) return;
+  dados.remover(coluna.id);
+  await carregarDia($('campo-data').value);
+  avisar('Lançamento excluído.', 'ok');
+}
+
 async function carregarDia(data, { manterEdicao = false } = {}) {
   if (!data) return;
   if (manterEdicao && estado.alterado) return;
@@ -389,6 +398,7 @@ async function carregarDia(data, { manterEdicao = false } = {}) {
   const lancamentos = dados.doDia(data);
   estado.assinaturaDoDia = JSON.stringify(lancamentos.map((l) => [l.id, l.atualizadoEm]));
   planilha.aplicarDia(lancamentos);
+  planilha.garantirColunaVazia();
   atualizarColunasDaImportacao();
 
   const comResponsavel = lancamentos.find((l) => l.responsavel);
@@ -451,9 +461,11 @@ async function salvarDia() {
 
   if (paraSalvar.length) dados.salvar(paraSalvar);
   marcarSalvo();
+  estado.colunasDaImagem.clear();
+  await carregarDia(data); // marca os horários salvos e abre um novo em branco
   avisar(
     paraSalvar.length
-      ? `${paraSalvar.length} lançamento(s) salvos. Veja o histórico no Painel.`
+      ? `${paraSalvar.length} lançamento(s) salvos. A folha já abriu o próximo horário.`
       : 'Nada mudou desde o último salvamento.',
     'ok',
   );
