@@ -382,6 +382,9 @@ table.planilha thead th.col-hora { position: relative; }
 .bloco-senha summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .bloco-senha .linha-dupla { margin: 10px 0; }
 
+.opcoes-foto { display: flex; gap: 10px; flex-wrap: wrap; }
+.opcoes-foto .btn { flex: 1 1 160px; padding: 14px 12px; font-size: 15px; }
+
 .previa img { max-width: 100%; max-height: 260px; border-radius: 6px; border: 1px solid var(--borda); }
 
 table.resultado td input { width: 74px; padding: 4px; border: 1px solid var(--borda); border-radius: 4px; text-align: center; font: inherit; }

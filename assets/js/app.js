@@ -6,7 +6,7 @@ import * as planilha from './planilha.js';
 import * as dados from './dados.js';
 import * as painel from './painel.js';
 import { prepararImagem } from './imagem.js';
-import { analisarBandeja, analisarPlanilha, testarChave } from './claude.js';
+import { analisarBandeja, testarChave } from './claude.js';
 import { PRODUTOS_POR_ID, SECOES } from './produtos.js';
 
 const estado = {
@@ -15,7 +15,6 @@ const estado = {
   senha: null,
   imagem: null,
   analise: null,
-  tipoAnalise: 'bandeja',
   alterado: false,
   assinaturaDoDia: '',
   colunasDaImagem: new Set(), // horários preenchidos pela análise de foto
@@ -487,7 +486,8 @@ function atualizarColunasDaImportacao() {
   planilha.colunas().forEach((coluna, i) => {
     select.add(new Option(`Produção ${i + 1}${coluna.hora ? ` — ${coluna.hora}` : ''}`, coluna.id));
   });
-  if ([...select.options].some((o) => o.value === anterior)) select.value = anterior;
+  const aindaExiste = [...select.options].some((o) => o.value === anterior);
+  select.value = aindaExiste ? anterior : select.options[select.options.length - 1]?.value || '';
 }
 
 function ligarImportacao() {
@@ -500,23 +500,13 @@ function ligarImportacao() {
     abrirImportacao();
   });
 
-  $('imp-tipo').addEventListener('change', () => {
-    estado.tipoAnalise = $('imp-tipo').value;
-    $('campo-coluna').hidden = estado.tipoAnalise === 'planilha';
-  });
+  // tirar na hora ou pegar do celular — dois campos, para a escolha ser explícita
+  $('btn-camera').addEventListener('click', () => $('imp-camera').click());
+  $('btn-galeria').addEventListener('click', () => $('imp-galeria').click());
 
-  $('imp-arquivo').addEventListener('change', async (e) => {
-    const arquivo = e.target.files?.[0];
-    if (!arquivo) return;
-    try {
-      estado.imagem = await prepararImagem(arquivo);
-      $('imp-previa-img').src = estado.imagem.dataUrl;
-      $('imp-previa').hidden = false;
-      status($('imp-status'), `Imagem pronta (${estado.imagem.largura}×${estado.imagem.altura}).`, 'info');
-    } catch (erro) {
-      status($('imp-status'), mensagemErro(erro), 'erro');
-    }
-  });
+  for (const campo of ['imp-camera', 'imp-galeria']) {
+    $(campo).addEventListener('change', (e) => receberFoto(e.target.files?.[0]));
+  }
 
   $('btn-analisar').addEventListener('click', analisar);
   $('btn-aplicar').addEventListener('click', aplicarAnalise);
@@ -536,15 +526,28 @@ async function garantirChave() {
   return Boolean(estado.apiKey);
 }
 
+async function receberFoto(arquivo) {
+  if (!arquivo) return;
+  try {
+    status($('imp-status'), 'Preparando a foto…', 'info');
+    estado.imagem = await prepararImagem(arquivo);
+    $('imp-previa-img').src = estado.imagem.dataUrl;
+    $('imp-previa').hidden = false;
+    status($('imp-status'), `Foto pronta (${estado.imagem.largura}×${estado.imagem.altura}). Toque em Analisar.`, 'info');
+  } catch (erro) {
+    status($('imp-status'), mensagemErro(erro), 'erro');
+  }
+}
+
 function abrirImportacao() {
   estado.imagem = null;
   estado.analise = null;
-  $('imp-arquivo').value = '';
+  $('imp-camera').value = '';
+  $('imp-galeria').value = '';
   $('imp-previa').hidden = true;
   $('imp-resultado').hidden = true;
   $('btn-aplicar').hidden = true;
   $('btn-analisar').disabled = false;
-  $('campo-coluna').hidden = $('imp-tipo').value === 'planilha';
   atualizarColunasDaImportacao();
   status($('imp-status'), '', 'info');
   $('dlg-importar').showModal();
@@ -552,19 +555,21 @@ function abrirImportacao() {
 
 async function analisar() {
   if (!estado.imagem) {
-    status($('imp-status'), 'Selecione uma imagem primeiro.', 'erro');
+    status($('imp-status'), 'Tire ou escolha uma foto primeiro.', 'erro');
     return;
   }
 
   const prefs = cofre.lerPreferencias();
-  const tipo = $('imp-tipo').value;
   $('btn-analisar').disabled = true;
-  status($('imp-status'), 'Analisando a imagem com a Claude… isso pode levar alguns segundos.', 'info');
+  status($('imp-status'), 'Contando as peças com a Claude… isso pode levar alguns segundos.', 'info');
 
   try {
-    const parametros = { apiKey: estado.apiKey, modelo: prefs.modelo, esforco: prefs.esforco, imagem: estado.imagem };
-    estado.analise = tipo === 'planilha' ? await analisarPlanilha(parametros) : await analisarBandeja(parametros);
-    estado.tipoAnalise = tipo;
+    estado.analise = await analisarBandeja({
+      apiKey: estado.apiKey,
+      modelo: prefs.modelo,
+      esforco: prefs.esforco,
+      imagem: estado.imagem,
+    });
     mostrarResultado();
     status($('imp-status'), 'Análise concluída. Confira os valores antes de aplicar.', 'ok');
   } catch (erro) {
@@ -615,53 +620,23 @@ function celulaConfianca(valor) {
 }
 
 function mostrarResultado() {
-  const cabecalho = document.querySelector('#tabela-resultado thead tr');
   const corpo = $('corpo-resultado');
-  cabecalho.innerHTML = '';
   corpo.innerHTML = '';
 
-  const colunas =
-    estado.tipoAnalise === 'planilha'
-      ? ['Aplicar', 'Produto', 'Prod. 1', 'Prod. 2', 'Prod. 3', 'Perdido', 'Confiança']
-      : ['Aplicar', 'Produto', 'Visto na imagem', 'Qtd.', 'Confiança'];
-  for (const titulo of colunas) {
-    const th = document.createElement('th');
-    th.textContent = titulo;
-    cabecalho.appendChild(th);
-  }
-
-  if (estado.tipoAnalise === 'planilha') {
-    for (const linha of estado.analise.linhas || []) {
-      const tr = document.createElement('tr');
-      tr.dataset.produto = linha.produto_id;
-      tr.dataset.rotulo = linha.rotulo_planilha || '';
-      tr.appendChild(celulaSelecao(true));
-      tr.appendChild(celula(nomeDoItem(linha.produto_id, linha.rotulo_planilha)));
-      tr.appendChild(celulaNumero(linha.producao_1 || 0, 'v1'));
-      tr.appendChild(celulaNumero(linha.producao_2 || 0, 'v2'));
-      tr.appendChild(celulaNumero(linha.producao_3 || 0, 'v3'));
-      tr.appendChild(celulaNumero(linha.perdido || 0, 'vp'));
-      tr.appendChild(celulaConfianca(linha.confianca));
-      corpo.appendChild(tr);
-    }
-  } else {
-    for (const item of estado.analise.itens || []) {
-      const tr = document.createElement('tr');
-      tr.dataset.produto = item.produto_id;
-      tr.dataset.rotulo = item.rotulo_visto || '';
-      tr.appendChild(celulaSelecao(true));
-      tr.appendChild(celula(nomeDoItem(item.produto_id, item.rotulo_visto)));
-      tr.appendChild(celula(item.rotulo_visto || '—'));
-      tr.appendChild(celulaNumero(item.quantidade || 0, 'v1'));
-      tr.appendChild(celulaConfianca(item.confianca));
-      corpo.appendChild(tr);
-    }
+  for (const item of estado.analise.itens || []) {
+    const tr = document.createElement('tr');
+    tr.dataset.produto = item.produto_id;
+    tr.dataset.rotulo = item.rotulo_visto || '';
+    tr.appendChild(celulaSelecao(true));
+    tr.appendChild(celula(nomeDoItem(item.produto_id, item.rotulo_visto)));
+    tr.appendChild(celula(item.rotulo_visto || '—'));
+    tr.appendChild(celulaNumero(item.quantidade || 0, 'v1'));
+    tr.appendChild(celulaConfianca(item.confianca));
+    corpo.appendChild(tr);
   }
 
   const partes = [];
-  if (estado.tipoAnalise === 'bandeja' && estado.analise.total_pecas != null) {
-    partes.push(`Total de peças contadas: ${estado.analise.total_pecas}.`);
-  }
+  if (estado.analise.total_pecas != null) partes.push(`Total de peças contadas: ${estado.analise.total_pecas}.`);
   if (estado.analise.observacoes) partes.push(estado.analise.observacoes);
   $('imp-observacoes').textContent = partes.join(' ');
 
@@ -669,63 +644,29 @@ function mostrarResultado() {
   $('btn-aplicar').hidden = false;
 }
 
-function dataBrParaIso(texto) {
-  const m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/.exec((texto || '').trim());
-  if (!m) return '';
-  const [, d, mes, a] = m;
-  const ano = a.length === 2 ? `20${a}` : a;
-  return `${ano}-${mes.padStart(2, '0')}-${d.padStart(2, '0')}`;
-}
-
 function aplicarAnalise() {
   const modo = $('imp-modo').value;
+  const colunaId = $('imp-coluna').value;
   const linhas = [...$('corpo-resultado').querySelectorAll('tr')].filter((tr) => tr.querySelector('.aplicar').checked);
   let aplicadas = 0;
 
-  if (estado.tipoAnalise === 'planilha') {
-    const iso = dataBrParaIso(estado.analise.data);
-    if (iso) $('campo-data').value = iso;
-    if (estado.analise.responsavel) $('campo-responsavel').value = estado.analise.responsavel;
+  estado.colunasDaImagem.add(colunaId);
+  if (modo === 'substituir') planilha.limparColuna(colunaId);
 
-    // uma coluna para cada horário lido na foto da folha
-    const horas = (estado.analise.horas || []).map((h) => (/^\d{1,2}:\d{2}$/.test(h || '') ? h.padStart(5, '0') : ''));
-    const usadas = [0, 1, 2].filter((i) => linhas.some((tr) => Number(tr.querySelector(`.v${i + 1}`).value) > 0));
-    planilha.definirColunas(usadas.map((i) => ({ id: crypto.randomUUID(), hora: horas[i] || '' })));
-    const colunas = planilha.colunas();
-    for (const coluna of colunas) estado.colunasDaImagem.add(coluna.id);
-
-    for (const tr of linhas) {
-      const id = tr.dataset.produto;
-      const ehProduto = id && id !== 'outro' && PRODUTOS_POR_ID[id];
-      usadas.forEach((indiceOriginal, posicao) => {
-        const valor = Number(tr.querySelector(`.v${indiceOriginal + 1}`).value) || 0;
-        if (!valor) return;
-        if (ehProduto) planilha.lancarProduto(id, colunas[posicao].id, valor, modo);
-        else planilha.lancarLivre(tr.dataset.rotulo || 'Outro produto', colunas[posicao].id, valor, modo);
-      });
-      const perdido = Number(tr.querySelector('.vp').value) || 0;
-      if (ehProduto && perdido) planilha.definirPerdido(id, perdido);
-      aplicadas += 1;
-    }
-  } else {
-    const colunaId = $('imp-coluna').value;
-    estado.colunasDaImagem.add(colunaId);
-    if (modo === 'substituir') planilha.limparColuna(colunaId);
-    for (const tr of linhas) {
-      const quantidade = Number(tr.querySelector('.v1').value) || 0;
-      if (!quantidade) continue;
-      const id = tr.dataset.produto;
-      if (PRODUTOS_POR_ID[id]) planilha.lancarProduto(id, colunaId, quantidade, modo);
-      else planilha.lancarLivre(tr.dataset.rotulo || 'Não identificado', colunaId, quantidade, modo);
-      aplicadas += 1;
-    }
+  for (const tr of linhas) {
+    const quantidade = Number(tr.querySelector('.v1').value) || 0;
+    if (!quantidade) continue;
+    const id = tr.dataset.produto;
+    if (PRODUTOS_POR_ID[id]) planilha.lancarProduto(id, colunaId, quantidade, modo);
+    else planilha.lancarLivre(tr.dataset.rotulo || 'Não identificado', colunaId, quantidade, modo);
+    aplicadas += 1;
   }
 
   planilha.recalcular();
   marcarAlterado();
   atualizarColunasDaImportacao();
   $('dlg-importar').close();
-  avisar(`${aplicadas} linha(s) lançada(s). Confira e clique em Salvar lançamentos.`, 'ok');
+  avisar(`${aplicadas} produto(s) lançados. Confira e toque em Salvar lançamentos.`, 'ok');
 }
 
 // ------------------------------------------------------------------ ações da folha

@@ -60,44 +60,11 @@ const ESQUEMA_BANDEJA = {
   },
 };
 
-const ESQUEMA_PLANILHA = {
-  type: 'object',
-  additionalProperties: false,
-  required: ['data', 'responsavel', 'horas', 'linhas', 'observacoes'],
-  properties: {
-    data: { type: 'string', description: 'data escrita no formulário, no formato dd/mm/aaaa; vazio se ilegível' },
-    responsavel: { type: 'string' },
-    horas: {
-      type: 'array',
-      description: 'horários das colunas Produção 1, 2 e 3 no formato HH:MM; string vazia quando em branco',
-      items: { type: 'string' },
-    },
-    linhas: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['produto_id', 'rotulo_planilha', 'producao_1', 'producao_2', 'producao_3', 'perdido', 'confianca'],
-        properties: {
-          produto_id: { type: 'string', enum: [...IDS_VALIDOS, 'outro'] },
-          rotulo_planilha: { type: 'string' },
-          producao_1: inteiro,
-          producao_2: inteiro,
-          producao_3: inteiro,
-          perdido: inteiro,
-          confianca,
-        },
-      },
-    },
-    observacoes: { type: 'string' },
-  },
-};
-
 // ---------------------------------------------------------------- prompts
 
 const SISTEMA = `Você é o assistente de produção da padaria Nuestro Gusto.
-Sua função é ler fotos tiradas na produção e devolver dados prontos para a folha
-"PRODUÇÃO - CONTROLE DIÁRIO". Responda sempre no formato JSON solicitado, em português.
+Sua função é contar as peças em fotos de bandejas e vitrines e devolver os dados prontos para a
+folha "PRODUÇÃO - CONTROLE DIÁRIO". Responda sempre no formato JSON solicitado, em português.
 Nunca invente produtos que não estejam no catálogo e nunca chute números: quando não tiver
 certeza, use uma confiança baixa e explique em "observacoes".`;
 
@@ -117,23 +84,6 @@ Regras de contagem:
 5. "confianca" é de 0 a 1 e reflete a certeza da contagem daquele tipo (peças sobrepostas ⇒ confiança menor).
 6. "total_pecas" é a soma de todas as quantidades.
 7. Em "observacoes", registre o que atrapalhou a leitura (foco, sobreposição, corte da foto).`;
-}
-
-function promptPlanilha() {
-  return `Esta foto é da folha "PRODUÇÃO - CONTROLE DIÁRIO" da Nuestro Gusto, preenchida à mão.
-Transcreva os valores manuscritos.
-
-LINHAS DA FOLHA (use exatamente o produto_id da esquerda):
-${catalogoParaPrompt()}
-
-Regras de transcrição:
-1. Uma entrada em "linhas" para cada linha que tenha algum número escrito. Célula em branco = 0.
-2. As colunas são, nesta ordem: PRODUÇÃO 1, PRODUÇÃO 2, PRODUÇÃO 3, TOTAL, PERDIDO, RESULTADO.
-   Transcreva apenas PRODUÇÃO 1/2/3 e PERDIDO — TOTAL e RESULTADO são recalculados pelo sistema.
-3. Linhas escritas à mão na seção "OUTROS PRODUTOS" usam produto_id "outro" e o nome escrito em "rotulo_planilha".
-4. Se a célula tiver algo como "2/2" ou "14 (rasurado)", registre o valor final pretendido e explique em "observacoes".
-5. Números rasurados ou ambíguos ⇒ confiança baixa naquela linha.
-6. "data" no formato dd/mm/aaaa e "horas" com os três horários (string vazia quando em branco).`;
 }
 
 // ---------------------------------------------------------------- chamada
@@ -192,19 +142,6 @@ export async function analisarBandeja({ apiKey, modelo, esforco, imagem }) {
     esforco,
     esquema: ESQUEMA_BANDEJA,
     instrucao: promptBandeja(),
-    imagem,
-  });
-  return extrairJson(resposta);
-}
-
-/** Transcreve uma foto da folha preenchida à mão. */
-export async function analisarPlanilha({ apiKey, modelo, esforco, imagem }) {
-  const cliente = await criarCliente(apiKey);
-  const resposta = await pedir(cliente, {
-    modelo,
-    esforco,
-    esquema: ESQUEMA_PLANILHA,
-    instrucao: promptPlanilha(),
     imagem,
   });
   return extrairJson(resposta);

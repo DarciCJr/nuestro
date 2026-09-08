@@ -4,12 +4,10 @@ Aplicação web **100% estática** (sem servidor, sem build) que reproduz a folh
 *PRODUÇÃO — CONTROLE DIÁRIO* e permite **preencher a planilha automaticamente a partir de uma foto**,
 usando a API da Claude (Anthropic).
 
-Dois tipos de foto são reconhecidos:
-
-| Tipo | O que faz |
-|---|---|
-| **Bandeja / vitrine** | conta as medialunas por sabor (doce de leite, chocolate, chocolate branco, avelã com nozes, pistacho, goiabada…) e lança as quantidades numa das colunas de Produção |
-| **Planilha preenchida à mão** | transcreve data, responsável, horários e todos os números escritos, inclusive as linhas de "Outros produtos" |
+A foto é sempre da **bandeja ou da vitrine**: o sistema conta as medialunas por sabor (doce de leite,
+chocolate, chocolate branco, avelã com nozes, pistacho, goiabada…) e lança as quantidades no horário
+escolhido. Dá para **tirar a foto na hora** (abre a câmera traseira) ou **escolher uma imagem do
+celular**.
 
 Depois da análise, os itens aparecem numa tela de conferência (com quantidade editável, nível de
 confiança e caixa de seleção por linha) — nada é lançado sem revisão. Em seguida é possível
@@ -123,8 +121,9 @@ backup em `nuestro_gusto:registros_backup`.
    Isso é feito **uma vez só**: a chave sobe cifrada para a nuvem e todo aparelho que entrar com a
    senha passa a usá-la, sem precisar cadastrar de novo. Use **Testar conexão** para confirmar.
    A chave é obtida em <https://console.anthropic.com/settings/keys>.
-4. Na folha, clique em **📷 Importar imagem e analisar**, escolha o tipo de foto, a coluna de destino
-   (Produção 1, 2 ou 3) e se os valores devem **substituir** ou **somar** ao que já está lançado.
+4. Na folha, toque em **📷 Importar imagem e analisar**, escolha entre *Tirar foto agora* e
+   *Escolher do celular*, confira o horário de destino (já vem o horário novo) e se os valores devem
+   **substituir** ou **somar** ao que já está lançado.
 5. Confira o resultado e clique em **Aplicar na planilha**.
 6. **Cadastrar controle** grava o dia no histórico (armazenamento do próprio navegador).
 

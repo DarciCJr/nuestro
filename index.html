@@ -231,36 +231,28 @@
   <div class="modal-conteudo">
     <h2>Importar imagem</h2>
 
+    <p class="ajuda">A foto é da bandeja ou da vitrine — o sistema conta as peças por sabor.</p>
+
+    <div class="opcoes-foto">
+      <button type="button" id="btn-camera" class="btn btn-primario">📷 Tirar foto agora</button>
+      <button type="button" id="btn-galeria" class="btn">🖼️ Escolher do celular</button>
+    </div>
+    <input type="file" id="imp-camera" accept="image/*" capture="environment" hidden>
+    <input type="file" id="imp-galeria" accept="image/*" hidden>
+
     <div class="linha-dupla">
-      <label class="campo">
-        <span>O que há na foto</span>
-        <select id="imp-tipo">
-          <option value="bandeja">Bandeja / vitrine de medialunas (contar unidades)</option>
-          <option value="planilha">Planilha preenchida à mão (ler os números)</option>
-        </select>
-      </label>
       <label class="campo" id="campo-coluna">
         <span>Lançar em</span>
-        <select id="imp-coluna">
-          <option value="1">Produção 1</option>
-          <option value="2">Produção 2</option>
-          <option value="3">Produção 3</option>
+        <select id="imp-coluna"></select>
+      </label>
+      <label class="campo">
+        <span>Como aplicar</span>
+        <select id="imp-modo">
+          <option value="substituir">Substituir os valores da coluna</option>
+          <option value="somar">Somar aos valores já lançados</option>
         </select>
       </label>
     </div>
-
-    <label class="campo">
-      <span>Como aplicar</span>
-      <select id="imp-modo">
-        <option value="substituir">Substituir os valores da coluna</option>
-        <option value="somar">Somar aos valores já lançados</option>
-      </select>
-    </label>
-
-    <label class="campo">
-      <span>Imagem</span>
-      <input type="file" id="imp-arquivo" accept="image/*" capture="environment">
-    </label>
 
     <div class="previa" id="imp-previa" hidden><img id="imp-previa-img" alt="Prévia da imagem selecionada"></div>
 
