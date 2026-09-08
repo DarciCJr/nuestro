@@ -17,6 +17,7 @@ const estado = {
   analise: null,
   tipoAnalise: 'bandeja',
   alterado: false,
+  assinaturaDoDia: '',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -105,35 +106,65 @@ function ligarLogin() {
 async function entrar() {
   const senha = $('login-senha').value;
   const erro = $('login-erro');
+  const botao = $('btn-entrar');
   erro.hidden = true;
+  botao.disabled = true;
+  botao.textContent = 'Entrando…';
 
-  if (!(await cofre.senhaCorreta(senha))) {
-    erro.textContent = 'Senha incorreta.';
-    erro.hidden = false;
-    $('login-senha').select();
-    return;
-  }
+  try {
+    await sincronizarAcesso(); // senha e chave da API valem para todos os aparelhos
 
-  estado.senha = senha;
-  estado.desbloqueado = true;
-
-  if (cofre.temChaveGravada()) {
-    try {
-      estado.apiKey = await cofre.lerChaveApi(senha);
-    } catch {
-      avisar('A chave da API gravada não pôde ser aberta. Cadastre-a novamente em Configurações.', 'erro');
+    if (!(await cofre.senhaCorreta(senha))) {
+      erro.textContent = 'Senha incorreta.';
+      erro.hidden = false;
+      $('login-senha').select();
+      return;
     }
+
+    estado.senha = senha;
+    estado.desbloqueado = true;
+    await carregarChaveApi(senha);
+
+    $('tela-login').hidden = true;
+    $('topo').hidden = false;
+    mostrarVista('folha');
+    $('login-senha').value = '';
+
+    const migrados = await dados.migrarControlesAntigos();
+    if (migrados) avisar(`${migrados} lançamento(s) do formato antigo foram convertidos.`, 'ok');
+
+    // a primeira sincronia precisa terminar antes de desenhar a folha,
+    // senão o dia aparece vazio num aparelho que ainda não baixou nada
+    await dados.iniciarSincroniaAutomatica();
+    await carregarDia($('campo-data').value);
+  } finally {
+    botao.disabled = false;
+    botao.textContent = 'Entrar';
   }
+}
 
-  $('tela-login').hidden = true;
-  $('topo').hidden = false;
-  mostrarVista('folha');
-  $('login-senha').value = '';
+/** Traz da nuvem a senha de acesso e o envelope cifrado da chave da API. */
+async function sincronizarAcesso() {
+  const acesso = await dados.lerConfigNuvem('acesso');
+  if (acesso?.hash) cofre.definirHashSenha(acesso.hash);
 
-  const migrados = await dados.migrarControlesAntigos();
-  if (migrados) avisar(`${migrados} lançamento(s) do formato antigo foram convertidos.`, 'ok');
-  dados.iniciarSincroniaAutomatica();
-  await carregarDia($('campo-data').value);
+  const api = await dados.lerConfigNuvem('api_claude');
+  if (api?.envelope) cofre.aplicarEnvelope(api.envelope);
+  if (api?.modelo || api?.esforco) {
+    cofre.gravarPreferencias({ modelo: api.modelo, esforco: api.esforco });
+    $('config-modelo').value = api.modelo || $('config-modelo').value;
+    $('config-esforco').value = api.esforco || $('config-esforco').value;
+  }
+}
+
+async function carregarChaveApi(senha) {
+  estado.apiKey = null;
+  if (!cofre.temChaveGravada()) return;
+  try {
+    estado.apiKey = await cofre.lerChaveApi(senha);
+  } catch {
+    avisar('A chave da API gravada não abriu com esta senha. Cadastre-a novamente em Configurações.', 'erro');
+  }
 }
 
 function bloquear() {
@@ -187,18 +218,41 @@ async function salvarChave() {
     status($('config-status'), 'Informe a chave da API.', 'erro');
     return;
   }
+
+  status($('config-status'), 'Salvando…', 'info');
   await cofre.gravarChaveApi(estado.senha, chave);
   cofre.gravarPreferencias({ modelo: $('config-modelo').value, esforco: $('config-esforco').value });
   estado.apiKey = chave;
-  status($('config-status'), 'Chave salva e criptografada neste navegador.', 'ok');
+
+  const enviada = await publicarChave();
+  status(
+    $('config-status'),
+    enviada
+      ? 'Chave salva na nuvem (cifrada). Qualquer aparelho que entrar com a senha já usa esta chave.'
+      : 'Chave salva neste aparelho, mas a nuvem não respondeu — tente sincronizar depois para valer nos outros.',
+    enviada ? 'ok' : 'erro',
+  );
 }
 
-function removerChave() {
-  if (!confirm('Remover a chave da API deste navegador?')) return;
+/** Sobe o envelope cifrado (nunca a chave em claro) para valer em todo aparelho. */
+async function publicarChave() {
+  const envelope = cofre.envelope();
+  if (!envelope) return false;
+  return dados.gravarConfigNuvem('api_claude', {
+    envelope,
+    modelo: $('config-modelo').value,
+    esforco: $('config-esforco').value,
+    atualizadoPor: dados.dispositivo(),
+  });
+}
+
+async function removerChave() {
+  if (!confirm('Remover a chave da API de todos os aparelhos?')) return;
   cofre.removerChaveApi();
   estado.apiKey = null;
   $('config-chave').value = '';
-  status($('config-status'), 'Chave removida.', 'ok');
+  await dados.gravarConfigNuvem('api_claude', {});
+  status($('config-status'), 'Chave removida daqui e da nuvem.', 'ok');
 }
 
 async function testarConexao() {
@@ -231,19 +285,39 @@ async function trocarSenha() {
   estado.senha = nova;
   $('config-nova-senha').value = '';
   $('config-nova-senha2').value = '';
-  status($('config-status'), 'Senha alterada.', 'ok');
+
+  const publicada = await dados.gravarConfigNuvem('acesso', { hash: cofre.hashSenhaAtual() });
+  if (cofre.temChaveGravada()) await publicarChave(); // o envelope foi recifrado com a senha nova
+  status(
+    $('config-status'),
+    publicada ? 'Senha alterada em todos os aparelhos.' : 'Senha alterada neste aparelho — a nuvem não respondeu.',
+    publicada ? 'ok' : 'erro',
+  );
 }
 
 // ------------------------------------------------------------------ sincronia
 
 function ligarSincronia() {
   dados.aoMudar(desenharSincronia);
+  dados.aoMudar(atualizarFolhaSeParada);
   $('sincronia').addEventListener('click', async () => {
     await dados.sincronizar({ silencioso: false });
     if (!$('painel').hidden) desenharPainel();
     else await carregarDia($('campo-data').value, { manterEdicao: true });
   });
   desenharSincronia();
+}
+
+/** Redesenha a folha quando chega lançamento novo — sem atropelar quem está digitando. */
+function atualizarFolhaSeParada() {
+  if (!estado.desbloqueado || estado.alterado || !$('painel').hidden) return;
+  const data = $('campo-data').value;
+  if (!data) return;
+  const doDia = dados.doDia(data);
+  const assinatura = JSON.stringify(doDia.map((l) => [l.id, l.atualizadoEm]));
+  if (assinatura === estado.assinaturaDoDia) return;
+  estado.assinaturaDoDia = assinatura;
+  carregarDia(data);
 }
 
 function desenharSincronia() {
@@ -270,6 +344,7 @@ async function carregarDia(data, { manterEdicao = false } = {}) {
   if (manterEdicao && estado.alterado) return;
 
   const lancamentos = dados.doDia(data);
+  estado.assinaturaDoDia = JSON.stringify(lancamentos.map((l) => [l.id, l.atualizadoEm]));
   planilha.aplicarDia(lancamentos);
   atualizarColunasDaImportacao();
 

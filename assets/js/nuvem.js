@@ -3,6 +3,7 @@
 import { NUVEM } from './config.js';
 
 const endereco = `${NUVEM.url}/rest/v1/${NUVEM.tabela}`;
+const enderecoConfig = `${NUVEM.url}/rest/v1/${NUVEM.tabelaConfig}`;
 
 const cabecalhos = (extra = {}) => ({
   apikey: NUVEM.chave,
@@ -75,4 +76,26 @@ export async function baixar(desde) {
   const resposta = await fetch(`${endereco}?${parametros}`, { headers: cabecalhos() });
   await verificar(resposta);
   return (await resposta.json()).map(paraApp);
+}
+
+// ------------------------------------------------------------------ configuração
+
+/** Lê uma linha da configuração compartilhada (chave da API, senha de acesso…). */
+export async function lerConfig(chave) {
+  const parametros = new URLSearchParams({ select: 'valor', chave: `eq.${chave}`, limit: '1' });
+  const resposta = await fetch(`${enderecoConfig}?${parametros}`, { headers: cabecalhos() });
+  await verificar(resposta);
+  const linhas = await resposta.json();
+  return linhas[0]?.valor || null;
+}
+
+/** Grava (ou substitui) uma linha da configuração compartilhada. */
+export async function gravarConfig(chave, valor) {
+  const resposta = await fetch(enderecoConfig, {
+    method: 'POST',
+    headers: cabecalhos({ Prefer: 'resolution=merge-duplicates,return=minimal' }),
+    body: JSON.stringify([{ chave, valor }]),
+  });
+  await verificar(resposta);
+  return true;
 }

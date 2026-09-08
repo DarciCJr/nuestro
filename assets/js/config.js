@@ -6,4 +6,5 @@ export const NUVEM = {
   url: 'https://htktczefdcxjychianrc.supabase.co',
   chave: 'sb_publishable_vhxvbTp8YTcKFIzB084Viw_rmmMMAOr',
   tabela: 'nuestro_lancamentos',
+  tabelaConfig: 'nuestro_config',
 };

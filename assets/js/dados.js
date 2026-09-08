@@ -207,7 +207,29 @@ export function iniciarSincroniaAutomatica(intervaloSegundos = 90) {
   setInterval(() => {
     if (navigator.onLine && document.visibilityState === 'visible') sincronizar();
   }, intervaloSegundos * 1000);
-  sincronizar();
+  return sincronizar(); // a primeira precisa ser aguardada: sem ela a folha abre vazia
+}
+
+// ------------------------------------------------------------------ configuração compartilhada
+
+/** Configuração que vale para todos os aparelhos (chave da API cifrada, senha, modelo). */
+export async function lerConfigNuvem(chave) {
+  if (!nuvem.configurada()) return null;
+  try {
+    return await nuvem.lerConfig(chave);
+  } catch {
+    return null; // sem internet, cada aparelho segue com o que tem gravado
+  }
+}
+
+export async function gravarConfigNuvem(chave, valor) {
+  if (!nuvem.configurada()) return false;
+  try {
+    await nuvem.gravarConfig(chave, valor);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ------------------------------------------------------------------ migração

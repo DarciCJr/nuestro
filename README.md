@@ -54,16 +54,34 @@ celular ou navegador com a senha vê o mesmo histórico:
 - **Funciona offline.** Sem internet, o lançamento fica guardado no aparelho e o indicador no topo
   mostra quantos estão pendentes; assim que a conexão volta, ele sobe sozinho.
 - **Sincronia automática** ao entrar, ao salvar, a cada 90 s e quando a internet volta. O botão
-  ☁ no topo força a sincronia na hora.
+  ☁ no topo força a sincronia na hora. A primeira sincronia é aguardada antes de desenhar a folha,
+  para o dia não aparecer vazio num aparelho que ainda não baixou nada; depois disso, lançamento novo
+  vindo de outro aparelho entra na folha sozinho (nunca por cima de quem está digitando).
 - **Junção entre aparelhos**: cada horário é uma linha própria (dois celulares podem lançar 08:00 e
   11:30 no mesmo dia sem se atropelar); as **perdas do dia** têm um identificador derivado da data,
   então todos escrevem na mesma linha em vez de duplicá-la. Em caso de edição simultânea, vale a
   gravação mais recente.
 - **Exclusão** é lógica (`removido`), para que sumir num aparelho suma nos outros.
 
+### Chave da API e senha compartilhadas
+
+Cadastrar a chave uma vez basta para a padaria inteira:
+
+- Ao salvar, a chave é cifrada com a senha de acesso (PBKDF2 + AES-GCM) e só o **envelope cifrado**
+  sobe para a linha `api_claude` da tabela `nuestro_config` — o banco nunca vê a chave em claro.
+- Quem entra em qualquer aparelho baixa esse envelope e o abre com a senha; a chave fica só na
+  memória da aba. O modelo e o esforço escolhidos viajam junto.
+- **Trocar a senha** vale para todos: o novo hash vai para a linha `acesso` e o envelope é recifrado
+  com a senha nova. **Remover a chave** também remove da nuvem.
+- Sem internet, cada aparelho continua com o que já tinha gravado localmente.
+
+> Como a senha do app é a única coisa que protege esse envelope, vale trocar a senha padrão por uma
+> que não circule fora da equipe (Configurações → Alterar senha de acesso).
+
 ### Banco de dados
 
-Tabela `public.nuestro_lancamentos` no projeto Supabase configurado em
+Tabelas `public.nuestro_lancamentos` (os lançamentos) e `public.nuestro_config` (chave da API cifrada
+e senha de acesso) no projeto Supabase configurado em
 [`assets/js/config.js`](assets/js/config.js) — trocar de projeto é trocar `url` e `chave` ali.
 A tabela tem RLS ligado com políticas de leitura/gravação para a chave publicável (não há política de
 `delete`; a exclusão é o campo `removido`). A migração que a cria está versionada no próprio Supabase
@@ -85,7 +103,8 @@ backup em `nuestro_gusto:registros_backup`.
    O botão **🔒 Bloquear**, no topo, trava tudo de novo e descarta a chave da memória.
 2. Clique em **Configurações**.
 3. Cole a **chave da API da Claude** (`sk-ant-…`), escolha o modelo e clique em **Salvar chave**.
-   Use **Testar conexão** para confirmar que está tudo certo.
+   Isso é feito **uma vez só**: a chave sobe cifrada para a nuvem e todo aparelho que entrar com a
+   senha passa a usá-la, sem precisar cadastrar de novo. Use **Testar conexão** para confirmar.
    A chave é obtida em <https://console.anthropic.com/settings/keys>.
 4. Na folha, clique em **📷 Importar imagem e analisar**, escolha o tipo de foto, a coluna de destino
    (Produção 1, 2 ou 3) e se os valores devem **substituir** ou **somar** ao que já está lançado.

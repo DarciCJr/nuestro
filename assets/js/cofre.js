@@ -77,6 +77,27 @@ export function removerChaveApi() {
   localStorage.removeItem(CHAVE_COFRE);
 }
 
+/** Envelope cifrado da chave — é o que vai para a nuvem, nunca a chave em claro. */
+export function envelope() {
+  const bruto = localStorage.getItem(CHAVE_COFRE);
+  return bruto ? JSON.parse(bruto) : null;
+}
+
+export function aplicarEnvelope(envelopeRemoto) {
+  if (!envelopeRemoto?.dados) return false;
+  localStorage.setItem(CHAVE_COFRE, JSON.stringify(envelopeRemoto));
+  return true;
+}
+
+/** Aceita o hash de senha vindo da nuvem, para a senha valer em todo aparelho. */
+export function definirHashSenha(hash) {
+  if (hash) localStorage.setItem(CHAVE_SENHA, hash);
+}
+
+export function hashSenhaAtual() {
+  return localStorage.getItem(CHAVE_SENHA) || HASH_SENHA_PADRAO;
+}
+
 /** Troca a senha: reabre o cofre com a antiga e regrava com a nova. */
 export async function trocarSenha(senhaAtual, novaSenha) {
   const apiKey = temChaveGravada() ? await lerChaveApi(senhaAtual) : null;
