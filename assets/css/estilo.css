@@ -41,6 +41,36 @@ body {
 
 .topo-acoes { display: flex; gap: 8px; }
 
+/* ------------------------------------------------------------------ login */
+
+.tela-login {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: linear-gradient(160deg, var(--azul) 0%, var(--azul-escuro) 100%);
+  z-index: 20;
+}
+
+.cartao-login {
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 28px 26px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(8, 20, 35, .35);
+  text-align: center;
+}
+.cartao-login .marca-sol { font-size: 34px; color: #f0b323; }
+.cartao-login h1 { margin: 0; font-size: 22px; color: var(--azul-escuro); letter-spacing: .03em; }
+.cartao-login > p { margin: -8px 0 6px; font-size: 13px; color: #6a7a8c; }
+.cartao-login .campo { text-align: left; }
+.cartao-login .btn { margin-top: 4px; padding: 11px; font-size: 15px; }
+
 /* ------------------------------------------------------------------ botões */
 
 .btn {

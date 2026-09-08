@@ -17,8 +17,10 @@ confiança e caixa de seleção por linha) — nada é lançado sem revisão. Em
 
 ## Como usar
 
-1. Abra a página (localmente ou pelo GitHub Pages — veja abaixo).
-2. Clique em **Configurações** e informe a senha de acesso (`Araxa@2019`).
+1. Abra a página (localmente ou pelo GitHub Pages — veja abaixo). O sistema abre numa
+   **tela de senha** — nada aparece antes de entrar (senha padrão: `Araxa@2019`).
+   O botão **🔒 Bloquear**, no topo, trava tudo de novo e descarta a chave da memória.
+2. Clique em **Configurações**.
 3. Cole a **chave da API da Claude** (`sk-ant-…`), escolha o modelo e clique em **Salvar chave**.
    Use **Testar conexão** para confirmar que está tudo certo.
    A chave é obtida em <https://console.anthropic.com/settings/keys>.
@@ -64,6 +66,8 @@ ou copiar os arquivos para qualquer hospedagem estática (Netlify, Vercel, Cloud
 
 Esta versão foi feita para **teste**, e por isso conversa direto do navegador com a API da Claude:
 
+- A senha protege a entrada do sistema e é a mesma que abre o cofre da chave: enquanto ninguém entra,
+  a chave nem é decifrada. Ao recarregar a página ou clicar em **Bloquear**, a chave sai da memória.
 - A chave fica **criptografada** no navegador (AES-GCM, senha derivada por PBKDF2 com 210 mil iterações)
   e só é decifrada com a senha de acesso. Ela **não** vai para o repositório nem para servidores próprios.
 - Ainda assim, quem usar aquele navegador com a senha em mãos consegue usar a chave, e a chave trafega

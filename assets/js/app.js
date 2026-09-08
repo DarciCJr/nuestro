@@ -10,6 +10,7 @@ import { PRODUTOS_POR_ID } from './produtos.js';
 const CHAVE_RASCUNHO = 'nuestro_gusto:rascunho';
 
 const estado = {
+  desbloqueado: false,
   apiKey: null, // só em memória, enquanto a aba estiver aberta
   senha: null,
   imagem: null,
@@ -68,6 +69,7 @@ function carregarRascunho() {
 // ------------------------------------------------------------------ início
 
 function iniciar() {
+  ligarLogin();
   planilha.montarPlanilha($('corpo-planilha'), salvarRascunho);
   $('campo-data').value = new Date().toISOString().slice(0, 10);
   carregarRascunho();
@@ -89,18 +91,66 @@ function iniciar() {
   $('config-esforco').value = prefs.esforco;
 }
 
+// ------------------------------------------------------------------ acesso
+
+function ligarLogin() {
+  $('form-login').addEventListener('submit', (e) => {
+    e.preventDefault();
+    entrar();
+  });
+  $('btn-bloquear').addEventListener('click', bloquear);
+  // só libera o botão quando os módulos já estão carregados
+  $('btn-entrar').disabled = false;
+  $('btn-entrar').textContent = 'Entrar';
+}
+
+async function entrar() {
+  const senha = $('login-senha').value;
+  const erro = $('login-erro');
+  erro.hidden = true;
+
+  if (!(await cofre.senhaCorreta(senha))) {
+    erro.textContent = 'Senha incorreta.';
+    erro.hidden = false;
+    $('login-senha').select();
+    return;
+  }
+
+  estado.senha = senha;
+  estado.desbloqueado = true;
+
+  if (cofre.temChaveGravada()) {
+    try {
+      estado.apiKey = await cofre.lerChaveApi(senha);
+    } catch {
+      avisar('A chave da API gravada não pôde ser aberta. Cadastre-a novamente em Configurações.', 'erro');
+    }
+  }
+
+  $('tela-login').hidden = true;
+  $('topo').hidden = false;
+  $('folha').hidden = false;
+  $('login-senha').value = '';
+}
+
+/** Fecha a sessão: esconde a folha e descarta a chave da memória. */
+function bloquear() {
+  estado.desbloqueado = false;
+  estado.apiKey = null;
+  estado.senha = null;
+  $('config-chave').value = '';
+  for (const dialogo of document.querySelectorAll('dialog[open]')) dialogo.close();
+  $('topo').hidden = true;
+  $('folha').hidden = true;
+  $('tela-login').hidden = false;
+  $('login-erro').hidden = true;
+  $('login-senha').focus();
+}
+
 // ------------------------------------------------------------------ configurações
 
 function ligarConfiguracoes() {
   $('btn-config').addEventListener('click', () => abrirConfiguracoes());
-
-  $('btn-desbloquear').addEventListener('click', desbloquear);
-  $('config-senha').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      desbloquear();
-    }
-  });
 
   $('btn-salvar-chave').addEventListener('click', salvarChave);
   $('btn-remover-chave').addEventListener('click', removerChave);
@@ -115,41 +165,13 @@ function ligarConfiguracoes() {
 }
 
 function abrirConfiguracoes(mensagem = '') {
-  $('config-bloqueado').hidden = Boolean(estado.apiKey);
-  $('config-aberto').hidden = !estado.apiKey;
-  $('config-senha').value = '';
-  $('config-erro-senha').hidden = true;
-  status($('config-status'), mensagem, 'info');
+  $('config-chave').value = estado.apiKey || '';
+  status(
+    $('config-status'),
+    mensagem || (cofre.temChaveGravada() ? 'Chave cadastrada neste navegador.' : 'Nenhuma chave cadastrada ainda.'),
+    'info',
+  );
   $('dlg-config').showModal();
-  if (!estado.apiKey) $('config-senha').focus();
-}
-
-async function desbloquear() {
-  const senha = $('config-senha').value;
-  const erro = $('config-erro-senha');
-
-  if (!(await cofre.senhaCorreta(senha))) {
-    erro.textContent = 'Senha incorreta.';
-    erro.hidden = false;
-    return;
-  }
-
-  estado.senha = senha;
-
-  if (cofre.temChaveGravada()) {
-    try {
-      estado.apiKey = await cofre.lerChaveApi(senha);
-      $('config-chave').value = estado.apiKey;
-    } catch (e) {
-      erro.textContent = mensagemErro(e);
-      erro.hidden = false;
-      return;
-    }
-  }
-
-  $('config-bloqueado').hidden = true;
-  $('config-aberto').hidden = false;
-  status($('config-status'), cofre.temChaveGravada() ? 'Chave cadastrada neste navegador.' : 'Nenhuma chave cadastrada ainda.', 'info');
 }
 
 async function salvarChave() {

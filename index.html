@@ -9,7 +9,21 @@
 </head>
 <body>
 
-<header class="topo">
+<div class="tela-login" id="tela-login">
+  <form class="cartao-login" id="form-login">
+    <span class="marca-sol">☀</span>
+    <h1>Nuestro Gusto</h1>
+    <p>Produção — Controle Diário</p>
+    <label class="campo">
+      <span>Senha de acesso</span>
+      <input type="password" id="login-senha" autocomplete="current-password" autofocus>
+    </label>
+    <p class="erro" id="login-erro" hidden></p>
+    <button type="submit" class="btn btn-primario" id="btn-entrar" disabled>Carregando…</button>
+  </form>
+</div>
+
+<header class="topo" id="topo" hidden>
   <div class="marca">
     <span class="marca-sol">☀</span>
     <div>
@@ -20,10 +34,11 @@
   <div class="topo-acoes">
     <button type="button" id="btn-historico" class="btn btn-claro">Histórico</button>
     <button type="button" id="btn-config" class="btn btn-claro">Configurações</button>
+    <button type="button" id="btn-bloquear" class="btn btn-claro" title="Bloquear o sistema">🔒 Bloquear</button>
   </div>
 </header>
 
-<main class="folha" id="folha">
+<main class="folha" id="folha" hidden>
 
   <section class="cabecalho-folha">
     <label class="campo">
@@ -102,20 +117,7 @@
   <form method="dialog" class="modal-conteudo" id="form-config">
     <h2>Configurações — API da Claude</h2>
 
-    <div id="config-bloqueado">
-      <p class="ajuda">Área protegida. Informe a senha para cadastrar ou alterar a chave da API.</p>
-      <label class="campo">
-        <span>Senha</span>
-        <input type="password" id="config-senha" autocomplete="current-password">
-      </label>
-      <p class="erro" id="config-erro-senha" hidden></p>
-      <menu class="modal-acoes">
-        <button type="button" class="btn" data-fechar>Cancelar</button>
-        <button type="button" id="btn-desbloquear" class="btn btn-primario">Desbloquear</button>
-      </menu>
-    </div>
-
-    <div id="config-aberto" hidden>
+    <div id="config-aberto">
       <label class="campo">
         <span>Chave da API (sk-ant-…)</span>
         <input type="password" id="config-chave" placeholder="sk-ant-api03-…" autocomplete="off">
