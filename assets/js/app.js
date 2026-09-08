@@ -5,7 +5,8 @@ import * as cofre from './cofre.js';
 import * as planilha from './planilha.js';
 import { prepararImagem } from './imagem.js';
 import { analisarBandeja, analisarPlanilha, testarChave } from './claude.js';
-import { PRODUTOS_POR_ID } from './produtos.js';
+import { PRODUTOS_POR_ID, SECOES } from './produtos.js';
+import * as painel from './painel.js';
 
 const CHAVE_RASCUNHO = 'nuestro_gusto:rascunho';
 
@@ -85,6 +86,7 @@ function iniciar() {
   ligarConfiguracoes();
   ligarImportacao();
   ligarAcoes();
+  ligarPainel();
 
   const prefs = cofre.lerPreferencias();
   $('config-modelo').value = prefs.modelo;
@@ -129,7 +131,7 @@ async function entrar() {
 
   $('tela-login').hidden = true;
   $('topo').hidden = false;
-  $('folha').hidden = false;
+  mostrarVista('folha');
   $('login-senha').value = '';
 }
 
@@ -142,6 +144,7 @@ function bloquear() {
   for (const dialogo of document.querySelectorAll('dialog[open]')) dialogo.close();
   $('topo').hidden = true;
   $('folha').hidden = true;
+  $('painel').hidden = true;
   $('tela-login').hidden = false;
   $('login-erro').hidden = true;
   $('login-senha').focus();
@@ -463,7 +466,7 @@ function ligarAcoes() {
       return;
     }
     planilha.salvarRegistro(registro);
-    avisar('Controle cadastrado. Veja em "Histórico".', 'ok');
+    avisar('Controle cadastrado. Veja em "Painel".', 'ok');
   });
 
   $('btn-csv').addEventListener('click', () => {
@@ -481,7 +484,36 @@ function ligarAcoes() {
     salvarRascunho();
   });
 
-  $('btn-historico').addEventListener('click', abrirHistorico);
+}
+
+// ------------------------------------------------------------------ painel
+
+const filtros = { de: '', ate: '', responsavel: '', produto: '' };
+
+function ligarPainel() {
+  $('btn-ver-folha').addEventListener('click', () => mostrarVista('folha'));
+  $('btn-ver-painel').addEventListener('click', () => mostrarVista('painel'));
+
+  for (const campo of ['filtro-de', 'filtro-ate', 'filtro-responsavel', 'filtro-produto']) {
+    $(campo).addEventListener('change', () => {
+      filtros.de = $('filtro-de').value;
+      filtros.ate = $('filtro-ate').value;
+      filtros.responsavel = $('filtro-responsavel').value;
+      filtros.produto = $('filtro-produto').value;
+      desenharPainel();
+    });
+  }
+
+  $('filtro-atalhos').addEventListener('click', (e) => {
+    const botao = e.target.closest('button');
+    if (!botao) return;
+    aplicarAtalho(botao.dataset);
+    for (const outro of $('filtro-atalhos').querySelectorAll('button')) outro.classList.remove('ativo');
+    botao.classList.add('ativo');
+    desenharPainel();
+  });
+
+  $('btn-csv-periodo').addEventListener('click', exportarPeriodo);
   $('btn-exportar-tudo').addEventListener('click', () => {
     planilha.baixarArquivo(
       'controles-nuestro-gusto.json',
@@ -489,21 +521,105 @@ function ligarAcoes() {
       'application/json',
     );
   });
+
+  let redesenhar = null;
+  window.addEventListener('resize', () => {
+    if ($('painel').hidden) return;
+    clearTimeout(redesenhar);
+    redesenhar = setTimeout(desenharPainel, 200);
+  });
 }
 
-function abrirHistorico() {
-  const registros = planilha.listarRegistros();
-  const corpo = $('corpo-historico');
-  corpo.innerHTML = '';
-  $('historico-vazio').hidden = registros.length > 0;
+function mostrarVista(vista) {
+  const noPainel = vista === 'painel';
+  $('folha').hidden = noPainel;
+  $('painel').hidden = !noPainel;
+  $('btn-ver-folha').classList.toggle('ativo', !noPainel);
+  $('btn-ver-painel').classList.toggle('ativo', noPainel);
+  if (noPainel) {
+    prepararFiltros();
+    desenharPainel();
+  }
+}
 
-  for (const registro of registros) {
+const hojeIso = () => new Date().toISOString().slice(0, 10);
+
+function diasAtras(dias) {
+  const d = new Date();
+  d.setDate(d.getDate() - dias + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function aplicarAtalho({ dias, mes, tudo }) {
+  if (dias) {
+    filtros.de = diasAtras(Number(dias));
+    filtros.ate = hojeIso();
+  } else if (mes) {
+    filtros.de = `${hojeIso().slice(0, 7)}-01`;
+    filtros.ate = hojeIso();
+  } else if (tudo) {
+    filtros.de = '';
+    filtros.ate = '';
+  }
+  $('filtro-de').value = filtros.de;
+  $('filtro-ate').value = filtros.ate;
+}
+
+/** Preenche os selects com os valores que existem nos controles cadastrados. */
+function prepararFiltros() {
+  const registros = planilha.listarRegistros();
+
+  const responsaveis = [...new Set(registros.map((r) => r.responsavel).filter(Boolean))].sort();
+  const selResponsavel = $('filtro-responsavel');
+  selResponsavel.innerHTML = '<option value="">Todos</option>';
+  for (const nome of responsaveis) selResponsavel.add(new Option(nome, nome));
+  selResponsavel.value = filtros.responsavel;
+
+  const selProduto = $('filtro-produto');
+  if (selProduto.options.length <= 1) {
+    for (const secao of SECOES) {
+      selProduto.add(new Option(`Seção: ${secao.titulo}`, `secao:${secao.id}`));
+      const grupo = document.createElement('optgroup');
+      grupo.label = secao.titulo;
+      for (const produto of secao.produtos) grupo.appendChild(new Option(produto.nome, produto.id));
+      selProduto.appendChild(grupo);
+    }
+    selProduto.add(new Option('Outros produtos (linhas livres)', 'livres'));
+  }
+  selProduto.value = filtros.produto;
+}
+
+function registrosFiltrados() {
+  return painel.filtrar(planilha.listarRegistros(), filtros);
+}
+
+function desenharPainel() {
+  const registros = registrosFiltrados();
+  const resumo = painel.agregar(registros);
+
+  painel.indicadores($('kpis'), resumo.totais);
+  painel.graficoDias($('area-dias'), resumo.porDia);
+  painel.graficoProdutos($('area-produtos'), resumo.porProduto);
+  $('legenda-dias').hidden = !resumo.porDia.length;
+  montarTabelaPainel(registros);
+}
+
+function montarTabelaPainel(registros) {
+  const corpo = $('corpo-painel');
+  corpo.innerHTML = '';
+  $('painel-vazio').hidden = registros.length > 0;
+
+  for (const registro of [...registros].sort((a, b) => b.data.localeCompare(a.data))) {
+    const t = registro.totais || { total: 0, perdido: 0, resultado: 0 };
+    const perda = t.total ? ((t.perdido / t.total) * 100).toFixed(1).replace('.', ',') : '0,0';
+
     const tr = document.createElement('tr');
-    tr.appendChild(celula(registro.data || '—'));
+    tr.appendChild(celula(dataBr(registro.data)));
     tr.appendChild(celula(registro.responsavel || '—'));
-    tr.appendChild(celula(registro.totais?.total ?? 0));
-    tr.appendChild(celula(registro.totais?.perdido ?? 0));
-    tr.appendChild(celula(registro.totais?.resultado ?? 0));
+    tr.appendChild(celula(t.total));
+    tr.appendChild(celula(t.perdido));
+    tr.appendChild(celula(t.resultado));
+    tr.appendChild(celula(`${perda}%`));
 
     const acoes = document.createElement('td');
     acoes.className = 'acoes-linha';
@@ -515,7 +631,7 @@ function abrirHistorico() {
     abrir.addEventListener('click', () => {
       planilha.aplicarRegistro(registro);
       salvarRascunho();
-      $('dlg-historico').close();
+      mostrarVista('folha');
       avisar('Controle carregado na folha.', 'ok');
     });
 
@@ -526,15 +642,40 @@ function abrirHistorico() {
     excluir.addEventListener('click', () => {
       if (!confirm('Excluir este controle?')) return;
       planilha.removerRegistro(registro.id);
-      abrirHistorico();
+      desenharPainel();
     });
 
     acoes.append(abrir, excluir);
     tr.appendChild(acoes);
     corpo.appendChild(tr);
   }
+}
 
-  $('dlg-historico').showModal();
+const dataBr = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—');
+
+function exportarPeriodo() {
+  const registros = registrosFiltrados();
+  if (!registros.length) {
+    avisar('Nada para exportar no período selecionado.', 'erro');
+    return;
+  }
+
+  const escapar = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const linhas = [['Data', 'Responsável', 'Produto', 'Produção 1', 'Produção 2', 'Produção 3', 'Total', 'Perdido', 'Resultado'].map(escapar).join(';')];
+
+  for (const registro of registros) {
+    for (const l of registro.linhas) {
+      const total = (l.p1 || 0) + (l.p2 || 0) + (l.p3 || 0);
+      linhas.push(
+        [dataBr(registro.data), registro.responsavel, l.nome, l.p1, l.p2, l.p3, total, l.perdido, total - (l.perdido || 0)]
+          .map(escapar)
+          .join(';'),
+      );
+    }
+  }
+
+  const periodo = `${filtros.de || 'inicio'}_a_${filtros.ate || 'hoje'}`;
+  planilha.baixarArquivo(`controles-${periodo}.csv`, linhas.join('\n'));
 }
 
 iniciar();

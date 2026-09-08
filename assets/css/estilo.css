@@ -7,6 +7,13 @@
   --cinza: #f4f6f9;
   --vermelho: #c0392b;
   --verde: #1e7e46;
+  /* paleta de dados (validada para daltonismo sobre superfície branca) */
+  --serie-1: #2a78d6;
+  --serie-2: #eb6834;
+  --grade: #e1e0d9;
+  --eixo: #c3c2b7;
+  --tinta-secundaria: #52514e;
+  --tinta-fraca: #898781;
   color-scheme: light;
 }
 
@@ -184,7 +191,7 @@ table.planilha td input.nome-livre { text-align: left; }
 td.calculada { font-weight: 600; background: #f7f9fb; }
 td.resultado { background: #eef8f0; color: var(--verde); }
 td.resultado.negativa { color: var(--vermelho); }
-tr td:nth-child(6) { background: #fdf1f0; }
+table.planilha tbody td:nth-child(6) { background: #fdf1f0; }
 
 .nota-folha {
   margin: 14px 0 0;
@@ -196,6 +203,90 @@ tr td:nth-child(6) { background: #fdf1f0; }
 }
 
 .barra-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+
+/* ------------------------------------------------------------------ painel */
+
+.painel {
+  max-width: 1100px;
+  margin: 20px auto 60px;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.btn-claro.ativo { background: #fff; color: var(--azul-escuro); font-weight: 600; }
+
+.painel-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.painel-filtros .campo { min-width: 140px; flex: 1 1 140px; }
+.painel-filtros .atalhos { display: flex; gap: 6px; flex: 1 1 100%; }
+.painel-filtros .atalhos .btn.ativo { background: var(--azul); border-color: var(--azul-escuro); color: #fff; }
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.kpi {
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.kpi-rotulo { display: block; font-size: 12px; color: var(--tinta-secundaria); text-transform: uppercase; letter-spacing: .05em; }
+.kpi-valor { display: block; margin-top: 4px; font-size: 26px; color: var(--texto); }
+.kpi-destaque { border-color: var(--serie-1); }
+.kpi-destaque .kpi-valor { font-size: 34px; color: var(--azul-escuro); }
+
+.cartao-grafico {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--borda);
+  border-radius: 8px;
+}
+.cartao-grafico h2 { margin: 0 0 4px; font-size: 15px; color: var(--azul-escuro); }
+.cartao-grafico .barra-acoes { margin-top: 12px; }
+
+.legenda { display: flex; gap: 16px; margin: 0 0 8px; font-size: 12.5px; color: var(--tinta-secundaria); }
+.legenda .chave { display: inline-flex; align-items: center; gap: 6px; }
+.legenda i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.area-grafico { overflow-x: auto; }
+.grafico { display: block; font-family: inherit; }
+.grafico .grade { stroke: var(--grade); stroke-width: 1; }
+.grafico .base { stroke: var(--eixo); stroke-width: 1; }
+.grafico .marca { cursor: pointer; }
+.grafico .serie-1 { fill: var(--serie-1); }
+.grafico .serie-2 { fill: var(--serie-2); }
+.grafico .rotulo { font-size: 11px; fill: var(--tinta-fraca); }
+.grafico .eixo-y { text-anchor: end; font-variant-numeric: tabular-nums; }
+.grafico .eixo-x { text-anchor: middle; }
+.grafico .rotulo-item { text-anchor: end; fill: var(--tinta-secundaria); }
+.grafico .valor { fill: var(--tinta-secundaria); font-variant-numeric: tabular-nums; }
+
+.dica-grafico {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(15, 26, 38, .94);
+  color: #fff;
+  font-size: 12.5px;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
 
 /* ------------------------------------------------------------------ modais */
 
@@ -261,13 +352,20 @@ table.resultado td input { width: 74px; padding: 4px; border: 1px solid var(--bo
 
 @media print {
   body { background: #fff; }
-  .topo-acoes, .barra-acoes, .aviso { display: none !important; }
+  .topo-acoes, .barra-acoes, .aviso, .painel, .dica-grafico { display: none !important; }
   .folha { border: none; box-shadow: none; margin: 0; padding: 0; max-width: none; }
   table.planilha td input { border: none; }
 }
 
 @media (max-width: 640px) {
   .folha { padding: 14px; margin: 12px; }
+  .painel { padding: 0 12px; margin: 12px auto 40px; }
+  .topo { padding: 10px 12px; }
+  .topo-acoes { width: 100%; }
+  .topo-acoes .btn { flex: 1; padding: 9px 6px; font-size: 13px; }
+  .kpi-valor { font-size: 22px; }
+  .kpi-destaque .kpi-valor { font-size: 28px; }
+  .painel-filtros { padding: 12px; }
   .linha-dupla { grid-template-columns: 1fr; }
   .col-produto { min-width: 170px; }
 }

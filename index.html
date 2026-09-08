@@ -32,7 +32,8 @@
     </div>
   </div>
   <div class="topo-acoes">
-    <button type="button" id="btn-historico" class="btn btn-claro">Histórico</button>
+    <button type="button" id="btn-ver-folha" class="btn btn-claro ativo">Folha</button>
+    <button type="button" id="btn-ver-painel" class="btn btn-claro">Painel</button>
     <button type="button" id="btn-config" class="btn btn-claro">Configurações</button>
     <button type="button" id="btn-bloquear" class="btn btn-claro" title="Bloquear o sistema">🔒 Bloquear</button>
   </div>
@@ -111,6 +112,71 @@
   </section>
 
 </main>
+
+<main class="painel" id="painel" hidden>
+
+  <section class="painel-filtros">
+    <div class="atalhos" id="filtro-atalhos">
+      <button type="button" class="btn btn-pequeno" data-dias="7">7 dias</button>
+      <button type="button" class="btn btn-pequeno" data-dias="30">30 dias</button>
+      <button type="button" class="btn btn-pequeno" data-mes="1">Este mês</button>
+      <button type="button" class="btn btn-pequeno" data-tudo="1">Tudo</button>
+    </div>
+    <label class="campo">
+      <span>De</span>
+      <input type="date" id="filtro-de">
+    </label>
+    <label class="campo">
+      <span>Até</span>
+      <input type="date" id="filtro-ate">
+    </label>
+    <label class="campo">
+      <span>Responsável</span>
+      <select id="filtro-responsavel"><option value="">Todos</option></select>
+    </label>
+    <label class="campo">
+      <span>Produto</span>
+      <select id="filtro-produto"><option value="">Todos os produtos</option></select>
+    </label>
+  </section>
+
+  <section class="kpis" id="kpis"><!-- gerado por assets/js/painel.js --></section>
+
+  <section class="cartao-grafico">
+    <h2>Produção por dia</h2>
+    <p class="legenda" id="legenda-dias">
+      <span class="chave"><i style="background: var(--serie-1)"></i>Resultado</span>
+      <span class="chave"><i style="background: var(--serie-2)"></i>Perdido</span>
+    </p>
+    <div class="area-grafico" id="area-dias"></div>
+  </section>
+
+  <section class="cartao-grafico">
+    <h2>Produtos mais produzidos no período</h2>
+    <div class="area-grafico" id="area-produtos"></div>
+  </section>
+
+  <section class="cartao-grafico">
+    <h2>Controles do período</h2>
+    <div class="tabela-rolagem">
+      <table class="resultado" id="tabela-painel">
+        <thead>
+          <tr><th>Data</th><th>Responsável</th><th>Produzido</th><th>Perdido</th><th>Resultado</th><th>Perda</th><th></th></tr>
+        </thead>
+        <tbody id="corpo-painel"></tbody>
+      </table>
+    </div>
+    <p class="ajuda" id="painel-vazio" hidden>Nenhum controle cadastrado no período selecionado.</p>
+    <div class="barra-acoes">
+      <button type="button" id="btn-csv-periodo" class="btn">Exportar período (CSV)</button>
+      <button type="button" id="btn-exportar-tudo" class="btn">Exportar tudo (JSON)</button>
+    </div>
+    <p class="ajuda">Os controles ficam salvos <strong>neste aparelho</strong> (navegador). Cada celular tem o seu próprio histórico.</p>
+  </section>
+
+</main>
+
+<div class="dica-grafico" id="dica-grafico" hidden></div>
 
 <!-- ============================ Configurações ============================ -->
 <dialog id="dlg-config" class="modal">
@@ -230,26 +296,6 @@
       <button type="button" class="btn" data-fechar>Fechar</button>
       <button type="button" id="btn-analisar" class="btn btn-primario">Analisar imagem</button>
       <button type="button" id="btn-aplicar" class="btn btn-primario" hidden>Aplicar na planilha</button>
-    </menu>
-  </div>
-</dialog>
-
-<!-- ============================ Histórico ============================ -->
-<dialog id="dlg-historico" class="modal">
-  <div class="modal-conteudo">
-    <h2>Controles cadastrados</h2>
-    <div class="tabela-rolagem">
-      <table class="resultado" id="tabela-historico">
-        <thead>
-          <tr><th>Data</th><th>Responsável</th><th>Total</th><th>Perdido</th><th>Resultado</th><th></th></tr>
-        </thead>
-        <tbody id="corpo-historico"></tbody>
-      </table>
-    </div>
-    <p class="ajuda" id="historico-vazio" hidden>Nenhum controle cadastrado neste navegador ainda.</p>
-    <menu class="modal-acoes">
-      <button type="button" id="btn-exportar-tudo" class="btn">Exportar tudo (JSON)</button>
-      <button type="button" class="btn" data-fechar>Fechar</button>
     </menu>
   </div>
 </dialog>
