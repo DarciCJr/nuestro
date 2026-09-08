@@ -162,6 +162,7 @@ table.resultado thead th {
 }
 
 table.planilha tfoot th { background: var(--cinza); font-size: 13px; }
+table.planilha tfoot th.total-coluna { font-variant-numeric: tabular-nums; }
 
 table.planilha th.col-produto,
 table.planilha td.col-produto { text-align: left; min-width: 220px; font-weight: 500; padding-left: 10px; }
@@ -172,7 +173,20 @@ table.planilha td.col-produto { text-align: left; min-width: 220px; font-weight:
   letter-spacing: .08em;
 }
 
+table.planilha tbody tr { background: #fff; }
 table.planilha tbody tr:nth-child(even of :not(.linha-secao)) { background: #fbfcfd; }
+
+/* a coluna do produto fica fixa quando a tabela rola de lado (celular) */
+table.planilha th.col-produto {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: inherit;
+  box-shadow: 1px 0 0 var(--borda);
+}
+table.planilha thead th.col-produto { background: var(--azul); z-index: 3; }
+table.planilha tfoot th.col-produto { background: var(--cinza); }
+table.planilha tr.linha-secao th { position: sticky; left: 0; }
 
 table.planilha td input {
   width: 100%;
@@ -203,6 +217,51 @@ table.planilha tbody td:nth-child(6) { background: #fdf1f0; }
 }
 
 .barra-acoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+
+/* ------------------------------------------------------------------ colunas por hora */
+
+.sincronia {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, .5);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sincronia:hover { background: rgba(255, 255, 255, .22); }
+.sincronia.alerta { background: #f6c344; border-color: #d9a417; color: #4a3600; }
+
+.col-hora { min-width: 96px; }
+.col-hora .titulo-coluna { display: block; font-size: 10px; opacity: .85; }
+.hora-coluna {
+  width: 86px;
+  margin-top: 2px;
+  padding: 3px 4px;
+  border: 1px solid rgba(255, 255, 255, .55);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+}
+.hora-coluna::-webkit-calendar-picker-indicator { filter: invert(1); }
+.remover-coluna {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, .8);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.remover-coluna:hover { color: #fff; }
+table.planilha thead th.col-hora { position: relative; }
+
+.btn.pendente { box-shadow: 0 0 0 2px #f6c344; }
 
 /* ------------------------------------------------------------------ painel */
 
@@ -367,5 +426,6 @@ table.resultado td input { width: 74px; padding: 4px; border: 1px solid var(--bo
   .kpi-destaque .kpi-valor { font-size: 28px; }
   .painel-filtros { padding: 12px; }
   .linha-dupla { grid-template-columns: 1fr; }
-  .col-produto { min-width: 170px; }
+  table.planilha th.col-produto { min-width: 150px; font-size: 13px; }
+  .col-hora { min-width: 84px; }
 }

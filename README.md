@@ -23,19 +23,60 @@ A aba **Painel** reúne os controles já cadastrados:
   responsável e produto (um produto, uma seção inteira ou as linhas livres).
 - **Indicadores**: produzido, perdido, resultado, % de perda, média por dia e dias com registro.
 - **Produção por dia**: colunas empilhadas (resultado + perdido = produzido), com detalhe ao tocar/passar o mouse.
+- **Produção por hora**: soma das reposições por faixa de horário no período.
 - **Produtos mais produzidos** no período, em ranking.
-- **Tabela dos controles**, com botão para reabrir um dia na folha ou excluí-lo, além de exportar
-  o período em CSV.
+- **Tabela dos lançamentos** (data, hora, tipo, responsável, quantidade e aparelho de origem), com
+  botão para reabrir o dia na folha ou excluir o lançamento, além de exportar o período em CSV.
 
-### Onde os dados ficam salvos
+## Lançamentos por hora e sincronia entre aparelhos
 
-Cada controle cadastrado fica no **armazenamento do próprio navegador** (`localStorage`) do aparelho
-que fez o lançamento — sobrevive a recarregar a página e a fechar o app, mas **não é compartilhado**
-entre celulares nem com o computador do escritório, e some se o usuário limpar os dados do navegador.
+A folha do dia tem **uma coluna por horário de reposição** (botão *Novo horário*). Ao salvar,
+**cada coluna vira um lançamento** guardado em JSON:
 
-Para um histórico único da padaria (todo mundo lançando no mesmo lugar, painel consolidado), o passo
-seguinte é um banco de dados — por exemplo Supabase, que também resolveria de uma vez a questão da
-chave da API ficar no servidor em vez do navegador.
+```json
+{
+  "id": "uuid",
+  "data": "2026-09-08",
+  "hora": "08:00",
+  "responsavel": "Carlos",
+  "tipo": "producao",          // ou "perda"
+  "origem": "manual",          // manual | imagem | migracao
+  "dispositivo": "Celular da produção",
+  "itens": [{ "produtoId": "medialuna_doce_de_leite", "nome": "…", "quantidade": 14 }]
+}
+```
+
+### Onde os dados ficam
+
+Os lançamentos são gravados **no aparelho** (`localStorage`) **e na nuvem** (Supabase), então qualquer
+celular ou navegador com a senha vê o mesmo histórico:
+
+- **Funciona offline.** Sem internet, o lançamento fica guardado no aparelho e o indicador no topo
+  mostra quantos estão pendentes; assim que a conexão volta, ele sobe sozinho.
+- **Sincronia automática** ao entrar, ao salvar, a cada 90 s e quando a internet volta. O botão
+  ☁ no topo força a sincronia na hora.
+- **Junção entre aparelhos**: cada horário é uma linha própria (dois celulares podem lançar 08:00 e
+  11:30 no mesmo dia sem se atropelar); as **perdas do dia** têm um identificador derivado da data,
+  então todos escrevem na mesma linha em vez de duplicá-la. Em caso de edição simultânea, vale a
+  gravação mais recente.
+- **Exclusão** é lógica (`removido`), para que sumir num aparelho suma nos outros.
+
+### Banco de dados
+
+Tabela `public.nuestro_lancamentos` no projeto Supabase configurado em
+[`assets/js/config.js`](assets/js/config.js) — trocar de projeto é trocar `url` e `chave` ali.
+A tabela tem RLS ligado com políticas de leitura/gravação para a chave publicável (não há política de
+`delete`; a exclusão é o campo `removido`). A migração que a cria está versionada no próprio Supabase
+com o nome `nuestro_gusto_lancamentos`.
+
+A chave que fica no código é a **publicável** — ela é feita para aparecer no navegador. Na prática isso
+significa que a porta da nuvem é a senha do app: quem chegasse ao endereço do site conseguiria ler e
+gravar os lançamentos de produção. Para fechar isso de vez, o caminho é login de verdade (Supabase Auth)
+com as políticas exigindo usuário autenticado — dá para fazer depois sem mexer no resto.
+
+Controles cadastrados no formato antigo (Produção 1/2/3 num registro por dia) são **convertidos
+automaticamente** em lançamentos por hora no primeiro acesso, e o formato antigo fica guardado como
+backup em `nuestro_gusto:registros_backup`.
 
 ## Como usar
 
@@ -110,7 +151,10 @@ assets/js/produtos.js          catálogo de produtos + descrição visual usada 
 assets/js/claude.js            chamadas à API da Claude (SDK oficial via CDN, structured outputs)
 assets/js/imagem.js            redimensionamento e conversão da foto para base64
 assets/js/cofre.js             senha de acesso e criptografia da chave da API
-assets/js/planilha.js          montagem da tabela, cálculos, histórico e exportações
+assets/js/planilha.js          folha do dia: colunas por horário, cálculos e exportações
+assets/js/dados.js             lançamentos: armazenamento local, fila offline e sincronia
+assets/js/nuvem.js             acesso REST à tabela do Supabase
+assets/js/config.js            endereço e chave publicável da nuvem
 assets/js/painel.js            agregações, filtros e gráficos do painel (SVG puro)
 assets/js/app.js               ligação da interface
 .github/workflows/pages.yml    publicação automática no GitHub Pages

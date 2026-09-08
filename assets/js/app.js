@@ -1,14 +1,13 @@
-// Ligações da interface: configurações protegidas por senha, importação de
-// imagem com análise pela Claude e cadastro do controle diário.
+// Ligações da interface: acesso por senha, folha do dia com lançamentos por
+// horário, análise de imagem pela Claude, sincronia com a nuvem e painel.
 
 import * as cofre from './cofre.js';
 import * as planilha from './planilha.js';
+import * as dados from './dados.js';
+import * as painel from './painel.js';
 import { prepararImagem } from './imagem.js';
 import { analisarBandeja, analisarPlanilha, testarChave } from './claude.js';
 import { PRODUTOS_POR_ID, SECOES } from './produtos.js';
-import * as painel from './painel.js';
-
-const CHAVE_RASCUNHO = 'nuestro_gusto:rascunho';
 
 const estado = {
   desbloqueado: false,
@@ -17,6 +16,7 @@ const estado = {
   imagem: null,
   analise: null,
   tipoAnalise: 'bandeja',
+  alterado: false,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -48,36 +48,16 @@ function mensagemErro(erro) {
   return erro?.message || 'Erro inesperado.';
 }
 
-// ------------------------------------------------------------------ rascunho
-
-function salvarRascunho() {
-  try {
-    localStorage.setItem(CHAVE_RASCUNHO, JSON.stringify(planilha.obterRegistro()));
-  } catch {
-    /* armazenamento indisponível — segue sem rascunho */
-  }
-}
-
-function carregarRascunho() {
-  try {
-    const bruto = localStorage.getItem(CHAVE_RASCUNHO);
-    if (bruto) planilha.aplicarRegistro(JSON.parse(bruto));
-  } catch {
-    /* rascunho corrompido — ignora */
-  }
-}
-
 // ------------------------------------------------------------------ início
 
 function iniciar() {
   ligarLogin();
-  planilha.montarPlanilha($('corpo-planilha'), salvarRascunho);
+  planilha.montarPlanilha(
+    { corpo: $('corpo-planilha'), cabecalho: $('cabecalho-planilha'), rodape: $('rodape-planilha') },
+    marcarAlterado,
+  );
+  planilha.definirColunas([]);
   $('campo-data').value = new Date().toISOString().slice(0, 10);
-  carregarRascunho();
-
-  for (const campo of ['campo-data', 'campo-responsavel', 'hora-1', 'hora-2', 'hora-3', 'campo-observacoes']) {
-    $(campo).addEventListener('input', salvarRascunho);
-  }
 
   for (const botao of document.querySelectorAll('[data-fechar]')) {
     botao.addEventListener('click', () => botao.closest('dialog').close());
@@ -87,10 +67,27 @@ function iniciar() {
   ligarImportacao();
   ligarAcoes();
   ligarPainel();
+  ligarSincronia();
 
   const prefs = cofre.lerPreferencias();
   $('config-modelo').value = prefs.modelo;
   $('config-esforco').value = prefs.esforco;
+
+  window.addEventListener('beforeunload', (e) => {
+    if (!estado.alterado) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+}
+
+function marcarAlterado() {
+  estado.alterado = true;
+  $('btn-salvar').classList.add('pendente');
+}
+
+function marcarSalvo() {
+  estado.alterado = false;
+  $('btn-salvar').classList.remove('pendente');
 }
 
 // ------------------------------------------------------------------ acesso
@@ -101,7 +98,6 @@ function ligarLogin() {
     entrar();
   });
   $('btn-bloquear').addEventListener('click', bloquear);
-  // só libera o botão quando os módulos já estão carregados
   $('btn-entrar').disabled = false;
   $('btn-entrar').textContent = 'Entrar';
 }
@@ -133,9 +129,13 @@ async function entrar() {
   $('topo').hidden = false;
   mostrarVista('folha');
   $('login-senha').value = '';
+
+  const migrados = await dados.migrarControlesAntigos();
+  if (migrados) avisar(`${migrados} lançamento(s) do formato antigo foram convertidos.`, 'ok');
+  dados.iniciarSincroniaAutomatica();
+  await carregarDia($('campo-data').value);
 }
 
-/** Fecha a sessão: esconde a folha e descarta a chave da memória. */
 function bloquear() {
   estado.desbloqueado = false;
   estado.apiKey = null;
@@ -154,11 +154,14 @@ function bloquear() {
 
 function ligarConfiguracoes() {
   $('btn-config').addEventListener('click', () => abrirConfiguracoes());
-
   $('btn-salvar-chave').addEventListener('click', salvarChave);
   $('btn-remover-chave').addEventListener('click', removerChave);
   $('btn-testar').addEventListener('click', testarConexao);
   $('btn-trocar-senha').addEventListener('click', trocarSenha);
+  $('config-aparelho').addEventListener('change', () => {
+    dados.definirDispositivo($('config-aparelho').value);
+    status($('config-status'), 'Nome do aparelho salvo.', 'ok');
+  });
 
   for (const campo of ['config-modelo', 'config-esforco']) {
     $(campo).addEventListener('change', () => {
@@ -169,6 +172,7 @@ function ligarConfiguracoes() {
 
 function abrirConfiguracoes(mensagem = '') {
   $('config-chave').value = estado.apiKey || '';
+  $('config-aparelho').value = dados.dispositivo();
   status(
     $('config-status'),
     mensagem || (cofre.temChaveGravada() ? 'Chave cadastrada neste navegador.' : 'Nenhuma chave cadastrada ainda.'),
@@ -230,7 +234,125 @@ async function trocarSenha() {
   status($('config-status'), 'Senha alterada.', 'ok');
 }
 
+// ------------------------------------------------------------------ sincronia
+
+function ligarSincronia() {
+  dados.aoMudar(desenharSincronia);
+  $('sincronia').addEventListener('click', async () => {
+    await dados.sincronizar({ silencioso: false });
+    if (!$('painel').hidden) desenharPainel();
+    else await carregarDia($('campo-data').value, { manterEdicao: true });
+  });
+  desenharSincronia();
+}
+
+function desenharSincronia() {
+  const { situacao, pendentes, em } = dados.estadoSincronia;
+  const botao = $('sincronia');
+  const horario = em ? em.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  const textos = {
+    sincronizando: '⏳ sincronizando…',
+    ok: pendentes ? `⚠ ${pendentes} pendente(s)` : `☁ ${horario}`,
+    erro: `⚠ ${pendentes} pendente(s)`,
+    offline: `📵 ${pendentes} no aparelho`,
+    ocioso: '☁ —',
+  };
+  botao.textContent = textos[situacao] || textos.ocioso;
+  botao.classList.toggle('alerta', situacao === 'erro' || situacao === 'offline' || pendentes > 0);
+  botao.title = dados.estadoSincronia.mensagem || 'Sincronizar agora';
+}
+
+// ------------------------------------------------------------------ folha do dia
+
+async function carregarDia(data, { manterEdicao = false } = {}) {
+  if (!data) return;
+  if (manterEdicao && estado.alterado) return;
+
+  const lancamentos = dados.doDia(data);
+  planilha.aplicarDia(lancamentos);
+  atualizarColunasDaImportacao();
+
+  const comResponsavel = lancamentos.find((l) => l.responsavel);
+  if (comResponsavel) $('campo-responsavel').value = comResponsavel.responsavel;
+  const comObservacoes = lancamentos.find((l) => l.observacoes);
+  $('campo-observacoes').value = comObservacoes?.observacoes || '';
+
+  marcarSalvo();
+}
+
+async function salvarDia() {
+  const data = $('campo-data').value;
+  if (!data) {
+    avisar('Informe a data do controle.', 'erro');
+    return;
+  }
+
+  const responsavel = $('campo-responsavel').value.trim();
+  const observacoes = $('campo-observacoes').value.trim();
+  const dia = planilha.lerDia();
+  const existentes = new Map(dados.doDia(data).map((l) => [l.id, l]));
+  const paraSalvar = [];
+
+  for (const coluna of dia.colunas) {
+    if (coluna.itens.length) {
+      const novo = {
+        id: coluna.id,
+        data,
+        hora: coluna.hora || '',
+        responsavel,
+        tipo: 'producao',
+        origem: 'manual',
+        observacoes,
+        itens: coluna.itens,
+      };
+      if (mudou(existentes.get(coluna.id), novo)) paraSalvar.push(novo);
+    } else if (existentes.has(coluna.id)) {
+      dados.remover(coluna.id); // horário esvaziado na tela
+    }
+  }
+
+  const idPerda = await dados.idDaPerda(data);
+  if (dia.perdas.length) {
+    const perda = { id: idPerda, data, hora: '', responsavel, tipo: 'perda', origem: 'manual', itens: dia.perdas };
+    if (mudou(existentes.get(idPerda), perda)) paraSalvar.push(perda);
+  } else if (existentes.has(idPerda)) {
+    dados.remover(idPerda);
+  }
+
+  if (!paraSalvar.length && !existentes.size) {
+    avisar('Nada para salvar: a folha está vazia.', 'erro');
+    return;
+  }
+
+  if (paraSalvar.length) dados.salvar(paraSalvar);
+  marcarSalvo();
+  avisar(
+    paraSalvar.length
+      ? `${paraSalvar.length} lançamento(s) salvos. Veja o histórico no Painel.`
+      : 'Nada mudou desde o último salvamento.',
+    'ok',
+  );
+}
+
+/** Um lançamento só é regravado quando o horário ou as quantidades mudaram. */
+function mudou(anterior, novo) {
+  if (!anterior) return true;
+  const chave = (l) => JSON.stringify([l.hora || '', (l.itens || []).map((i) => [i.produtoId, i.nome, i.quantidade]).sort()]);
+  return chave(anterior) !== chave(novo) || (anterior.responsavel || '') !== (novo.responsavel || '');
+}
+
 // ------------------------------------------------------------------ importação
+
+function atualizarColunasDaImportacao() {
+  const select = $('imp-coluna');
+  const anterior = select.value;
+  select.innerHTML = '';
+  planilha.colunas().forEach((coluna, i) => {
+    select.add(new Option(`Produção ${i + 1}${coluna.hora ? ` — ${coluna.hora}` : ''}`, coluna.id));
+  });
+  if ([...select.options].some((o) => o.value === anterior)) select.value = anterior;
+}
 
 function ligarImportacao() {
   $('btn-importar').addEventListener('click', () => {
@@ -273,6 +395,7 @@ function abrirImportacao() {
   $('btn-aplicar').hidden = true;
   $('btn-analisar').disabled = false;
   $('campo-coluna').hidden = $('imp-tipo').value === 'planilha';
+  atualizarColunasDaImportacao();
   status($('imp-status'), '', 'info');
   $('dlg-importar').showModal();
 }
@@ -406,84 +529,96 @@ function dataBrParaIso(texto) {
 
 function aplicarAnalise() {
   const modo = $('imp-modo').value;
-  const coluna = Number($('imp-coluna').value);
-  const linhas = [...$('corpo-resultado').querySelectorAll('tr')].filter(
-    (tr) => tr.querySelector('.aplicar').checked,
-  );
+  const linhas = [...$('corpo-resultado').querySelectorAll('tr')].filter((tr) => tr.querySelector('.aplicar').checked);
   let aplicadas = 0;
 
   if (estado.tipoAnalise === 'planilha') {
     const iso = dataBrParaIso(estado.analise.data);
     if (iso) $('campo-data').value = iso;
     if (estado.analise.responsavel) $('campo-responsavel').value = estado.analise.responsavel;
-    (estado.analise.horas || []).forEach((hora, i) => {
-      if (/^\d{1,2}:\d{2}$/.test(hora || '')) $(`hora-${i + 1}`).value = hora.padStart(5, '0');
-    });
+
+    // uma coluna para cada horário lido na foto da folha
+    const horas = (estado.analise.horas || []).map((h) => (/^\d{1,2}:\d{2}$/.test(h || '') ? h.padStart(5, '0') : ''));
+    const usadas = [0, 1, 2].filter((i) => linhas.some((tr) => Number(tr.querySelector(`.v${i + 1}`).value) > 0));
+    planilha.definirColunas(usadas.map((i) => ({ id: crypto.randomUUID(), hora: horas[i] || '' })));
+    const colunas = planilha.colunas();
 
     for (const tr of linhas) {
-      const valores = [1, 2, 3].map((c) => Number(tr.querySelector(`.v${c}`).value) || 0);
-      const perdido = Number(tr.querySelector('.vp').value) || 0;
       const id = tr.dataset.produto;
       const ehProduto = id && id !== 'outro' && PRODUTOS_POR_ID[id];
-
-      valores.forEach((valor, i) => {
-        if (!valor && modo === 'somar') return;
-        if (ehProduto) planilha.lancarProduto(id, i + 1, valor, modo);
-        else if (valor) planilha.lancarLivre(tr.dataset.rotulo || 'Outro produto', i + 1, valor, modo);
+      usadas.forEach((indiceOriginal, posicao) => {
+        const valor = Number(tr.querySelector(`.v${indiceOriginal + 1}`).value) || 0;
+        if (!valor) return;
+        if (ehProduto) planilha.lancarProduto(id, colunas[posicao].id, valor, modo);
+        else planilha.lancarLivre(tr.dataset.rotulo || 'Outro produto', colunas[posicao].id, valor, modo);
       });
+      const perdido = Number(tr.querySelector('.vp').value) || 0;
       if (ehProduto && perdido) planilha.definirPerdido(id, perdido);
       aplicadas += 1;
     }
   } else {
-    if (modo === 'substituir') planilha.limparColuna(coluna);
+    const colunaId = $('imp-coluna').value;
+    if (modo === 'substituir') planilha.limparColuna(colunaId);
     for (const tr of linhas) {
       const quantidade = Number(tr.querySelector('.v1').value) || 0;
       if (!quantidade) continue;
       const id = tr.dataset.produto;
-      if (PRODUTOS_POR_ID[id]) planilha.lancarProduto(id, coluna, quantidade, modo);
-      else planilha.lancarLivre(tr.dataset.rotulo || 'Não identificado', coluna, quantidade, modo);
+      if (PRODUTOS_POR_ID[id]) planilha.lancarProduto(id, colunaId, quantidade, modo);
+      else planilha.lancarLivre(tr.dataset.rotulo || 'Não identificado', colunaId, quantidade, modo);
       aplicadas += 1;
     }
   }
 
   planilha.recalcular();
-  salvarRascunho();
+  marcarAlterado();
+  atualizarColunasDaImportacao();
   $('dlg-importar').close();
-  avisar(`${aplicadas} linha(s) lançada(s) na planilha. Confira antes de cadastrar.`, 'ok');
+  avisar(`${aplicadas} linha(s) lançada(s). Confira e clique em Salvar lançamentos.`, 'ok');
 }
 
 // ------------------------------------------------------------------ ações da folha
 
 function ligarAcoes() {
-  $('btn-salvar').addEventListener('click', () => {
-    const registro = planilha.obterRegistro();
-    if (!registro.linhas.length) {
-      avisar('Nada para cadastrar: a folha está vazia.', 'erro');
+  $('btn-salvar').addEventListener('click', salvarDia);
+
+  $('btn-nova-coluna').addEventListener('click', () => {
+    const coluna = planilha.adicionarColuna();
+    if (!coluna) {
+      avisar('Limite de horários por dia atingido.', 'erro');
       return;
     }
-    if (!registro.data) {
-      avisar('Informe a data do controle.', 'erro');
-      return;
-    }
-    planilha.salvarRegistro(registro);
-    avisar('Controle cadastrado. Veja em "Painel".', 'ok');
+    atualizarColunasDaImportacao();
   });
 
+  $('campo-data').addEventListener('change', async () => {
+    if (estado.alterado && !confirm('Há lançamentos não salvos. Trocar de dia mesmo assim?')) return;
+    marcarSalvo();
+    await carregarDia($('campo-data').value);
+  });
+
+  for (const campo of ['campo-responsavel', 'campo-observacoes']) {
+    $(campo).addEventListener('input', marcarAlterado);
+  }
+
   $('btn-csv').addEventListener('click', () => {
-    const registro = planilha.obterRegistro();
-    planilha.baixarArquivo(`controle-diario-${registro.data || 'sem-data'}.csv`, planilha.registroParaCsv(registro));
+    planilha.baixarArquivo(
+      `controle-diario-${$('campo-data').value || 'sem-data'}.csv`,
+      planilha.diaParaCsv({
+        data: $('campo-data').value,
+        responsavel: $('campo-responsavel').value,
+        observacoes: $('campo-observacoes').value,
+      }),
+    );
   });
 
   $('btn-imprimir').addEventListener('click', () => window.print());
 
   $('btn-limpar').addEventListener('click', () => {
-    if (!confirm('Limpar todos os campos da folha?')) return;
+    if (!confirm('Limpar os campos da folha? (os lançamentos já salvos continuam guardados)')) return;
     planilha.limparTudo();
-    $('campo-responsavel').value = '';
     $('campo-observacoes').value = '';
-    salvarRascunho();
+    marcarAlterado();
   });
-
 }
 
 // ------------------------------------------------------------------ painel
@@ -515,11 +650,7 @@ function ligarPainel() {
 
   $('btn-csv-periodo').addEventListener('click', exportarPeriodo);
   $('btn-exportar-tudo').addEventListener('click', () => {
-    planilha.baixarArquivo(
-      'controles-nuestro-gusto.json',
-      JSON.stringify(planilha.listarRegistros(), null, 2),
-      'application/json',
-    );
+    planilha.baixarArquivo('lancamentos-nuestro-gusto.json', dados.exportarTudo(), 'application/json');
   });
 
   let redesenhar = null;
@@ -565,11 +696,10 @@ function aplicarAtalho({ dias, mes, tudo }) {
   $('filtro-ate').value = filtros.ate;
 }
 
-/** Preenche os selects com os valores que existem nos controles cadastrados. */
 function prepararFiltros() {
-  const registros = planilha.listarRegistros();
+  const lancamentos = dados.listar();
 
-  const responsaveis = [...new Set(registros.map((r) => r.responsavel).filter(Boolean))].sort();
+  const responsaveis = [...new Set(lancamentos.map((l) => l.responsavel).filter(Boolean))].sort();
   const selResponsavel = $('filtro-responsavel');
   selResponsavel.innerHTML = '<option value="">Todos</option>';
   for (const nome of responsaveis) selResponsavel.add(new Option(nome, nome));
@@ -589,37 +719,34 @@ function prepararFiltros() {
   selProduto.value = filtros.produto;
 }
 
-function registrosFiltrados() {
-  return painel.filtrar(planilha.listarRegistros(), filtros);
-}
+const lancamentosFiltrados = () => painel.filtrar(dados.listar(), filtros);
 
 function desenharPainel() {
-  const registros = registrosFiltrados();
-  const resumo = painel.agregar(registros);
+  const lancamentos = lancamentosFiltrados();
+  const resumo = painel.agregar(lancamentos);
 
   painel.indicadores($('kpis'), resumo.totais);
   painel.graficoDias($('area-dias'), resumo.porDia);
+  painel.graficoHoras($('area-horas'), resumo.porHora);
   painel.graficoProdutos($('area-produtos'), resumo.porProduto);
   $('legenda-dias').hidden = !resumo.porDia.length;
-  montarTabelaPainel(registros);
+  montarTabelaPainel(lancamentos);
 }
 
-function montarTabelaPainel(registros) {
+function montarTabelaPainel(lancamentos) {
   const corpo = $('corpo-painel');
   corpo.innerHTML = '';
-  $('painel-vazio').hidden = registros.length > 0;
+  $('painel-vazio').hidden = lancamentos.length > 0;
 
-  for (const registro of [...registros].sort((a, b) => b.data.localeCompare(a.data))) {
-    const t = registro.totais || { total: 0, perdido: 0, resultado: 0 };
-    const perda = t.total ? ((t.perdido / t.total) * 100).toFixed(1).replace('.', ',') : '0,0';
-
+  for (const lancamento of lancamentos) {
     const tr = document.createElement('tr');
-    tr.appendChild(celula(dataBr(registro.data)));
-    tr.appendChild(celula(registro.responsavel || '—'));
-    tr.appendChild(celula(t.total));
-    tr.appendChild(celula(t.perdido));
-    tr.appendChild(celula(t.resultado));
-    tr.appendChild(celula(`${perda}%`));
+    tr.appendChild(celula(dataBr(lancamento.data)));
+    tr.appendChild(celula(lancamento.hora || '—'));
+    tr.appendChild(celula(lancamento.tipo === 'perda' ? 'Perda' : 'Produção'));
+    tr.appendChild(celula(lancamento.responsavel || '—'));
+    tr.appendChild(celula((lancamento.itens || []).length));
+    tr.appendChild(celula(painel.totalDoLancamento(lancamento)));
+    tr.appendChild(celula(lancamento.dispositivo || '—'));
 
     const acoes = document.createElement('td');
     acoes.className = 'acoes-linha';
@@ -627,12 +754,12 @@ function montarTabelaPainel(registros) {
     const abrir = document.createElement('button');
     abrir.type = 'button';
     abrir.className = 'btn btn-pequeno';
-    abrir.textContent = 'Abrir';
-    abrir.addEventListener('click', () => {
-      planilha.aplicarRegistro(registro);
-      salvarRascunho();
+    abrir.textContent = 'Abrir dia';
+    abrir.addEventListener('click', async () => {
+      $('campo-data').value = lancamento.data;
+      await carregarDia(lancamento.data);
       mostrarVista('folha');
-      avisar('Controle carregado na folha.', 'ok');
+      avisar('Dia carregado na folha.', 'ok');
     });
 
     const excluir = document.createElement('button');
@@ -640,8 +767,8 @@ function montarTabelaPainel(registros) {
     excluir.className = 'btn btn-pequeno btn-perigo';
     excluir.textContent = 'Excluir';
     excluir.addEventListener('click', () => {
-      if (!confirm('Excluir este controle?')) return;
-      planilha.removerRegistro(registro.id);
+      if (!confirm('Excluir este lançamento? Ele some também nos outros aparelhos.')) return;
+      dados.remover(lancamento.id);
       desenharPainel();
     });
 
@@ -654,20 +781,19 @@ function montarTabelaPainel(registros) {
 const dataBr = (iso) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '—');
 
 function exportarPeriodo() {
-  const registros = registrosFiltrados();
-  if (!registros.length) {
+  const lancamentos = lancamentosFiltrados();
+  if (!lancamentos.length) {
     avisar('Nada para exportar no período selecionado.', 'erro');
     return;
   }
 
   const escapar = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  const linhas = [['Data', 'Responsável', 'Produto', 'Produção 1', 'Produção 2', 'Produção 3', 'Total', 'Perdido', 'Resultado'].map(escapar).join(';')];
+  const linhas = [['Data', 'Hora', 'Tipo', 'Responsável', 'Produto', 'Quantidade', 'Aparelho'].map(escapar).join(';')];
 
-  for (const registro of registros) {
-    for (const l of registro.linhas) {
-      const total = (l.p1 || 0) + (l.p2 || 0) + (l.p3 || 0);
+  for (const l of lancamentos) {
+    for (const item of l.itens || []) {
       linhas.push(
-        [dataBr(registro.data), registro.responsavel, l.nome, l.p1, l.p2, l.p3, total, l.perdido, total - (l.perdido || 0)]
+        [dataBr(l.data), l.hora, l.tipo === 'perda' ? 'Perda' : 'Produção', l.responsavel, item.nome, item.quantidade, l.dispositivo]
           .map(escapar)
           .join(';'),
       );
@@ -675,7 +801,7 @@ function exportarPeriodo() {
   }
 
   const periodo = `${filtros.de || 'inicio'}_a_${filtros.ate || 'hoje'}`;
-  planilha.baixarArquivo(`controles-${periodo}.csv`, linhas.join('\n'));
+  planilha.baixarArquivo(`lancamentos-${periodo}.csv`, linhas.join('\n'));
 }
 
 iniciar();

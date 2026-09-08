@@ -2,60 +2,63 @@
 // e desenha os gráficos (SVG puro, sem biblioteca externa).
 
 import { SECOES, PRODUTOS_POR_ID } from './produtos.js';
-import { listarRegistros } from './planilha.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const numero = new Intl.NumberFormat('pt-BR');
 
 // ------------------------------------------------------------------ agregação
 
-/** Aplica período, responsável e produto sobre os controles cadastrados. */
-export function filtrar(registros, { de, ate, responsavel, produto }) {
-  return registros
-    .filter((r) => r.data && (!de || r.data >= de) && (!ate || r.data <= ate))
-    .filter((r) => !responsavel || r.responsavel === responsavel)
-    .map((r) => ({ ...r, linhas: r.linhas.filter((l) => combinaProduto(l, produto)) }))
-    .filter((r) => r.linhas.length);
+/** Aplica período, responsável e produto sobre os lançamentos. */
+export function filtrar(lancamentos, { de, ate, responsavel, produto }) {
+  return lancamentos
+    .filter((l) => l.data && (!de || l.data >= de) && (!ate || l.data <= ate))
+    .filter((l) => !responsavel || l.responsavel === responsavel)
+    .map((l) => ({ ...l, itens: (l.itens || []).filter((i) => combinaProduto(i, produto)) }))
+    .filter((l) => l.itens.length);
 }
 
-function combinaProduto(linha, produto) {
+function combinaProduto(item, produto) {
   if (!produto) return true;
   if (produto.startsWith('secao:')) {
     const secao = SECOES.find((s) => s.id === produto.slice(6));
-    return Boolean(secao && linha.produtoId && secao.produtos.some((p) => p.id === linha.produtoId));
+    return Boolean(secao && item.produtoId && secao.produtos.some((p) => p.id === item.produtoId));
   }
-  if (produto === 'livres') return !linha.produtoId;
-  return linha.produtoId === produto;
+  if (produto === 'livres') return !item.produtoId;
+  return item.produtoId === produto;
 }
 
-const somaLinha = (l) => (l.p1 || 0) + (l.p2 || 0) + (l.p3 || 0);
+export const totalDoLancamento = (l) => (l.itens || []).reduce((t, i) => t + (i.quantidade || 0), 0);
 
-/** Resume os registros filtrados em totais, série diária e ranking de produtos. */
-export function agregar(registros) {
+/** Resume os lançamentos em totais, série diária, por hora e ranking de produtos. */
+export function agregar(lancamentos) {
   const dias = new Map();
+  const horas = new Map();
   const produtos = new Map();
-  const totais = { produzido: 0, perdido: 0, resultado: 0, controles: registros.length };
+  const totais = { produzido: 0, perdido: 0, resultado: 0, lancamentos: lancamentos.length };
 
-  for (const registro of registros) {
-    const dia = dias.get(registro.data) || { data: registro.data, produzido: 0, perdido: 0 };
+  for (const lancamento of lancamentos) {
+    const ehPerda = lancamento.tipo === 'perda';
+    const total = totalDoLancamento(lancamento);
+    const dia = dias.get(lancamento.data) || { data: lancamento.data, produzido: 0, perdido: 0 };
 
-    for (const linha of registro.linhas) {
-      const produzido = somaLinha(linha);
-      const perdido = linha.perdido || 0;
+    if (ehPerda) {
+      dia.perdido += total;
+      totais.perdido += total;
+    } else {
+      dia.produzido += total;
+      totais.produzido += total;
 
-      dia.produzido += produzido;
-      dia.perdido += perdido;
-      totais.produzido += produzido;
-      totais.perdido += perdido;
-
-      const nome = linha.produtoId ? PRODUTOS_POR_ID[linha.produtoId]?.nome || linha.nome : linha.nome;
-      const item = produtos.get(nome) || { nome, produzido: 0, perdido: 0 };
-      item.produzido += produzido;
-      item.perdido += perdido;
-      produtos.set(nome, item);
+      const faixa = (lancamento.hora || '').slice(0, 2);
+      if (faixa) horas.set(faixa, (horas.get(faixa) || 0) + total);
     }
+    dias.set(lancamento.data, dia);
 
-    dias.set(registro.data, dia);
+    for (const item of lancamento.itens || []) {
+      const nome = item.produtoId ? PRODUTOS_POR_ID[item.produtoId]?.nome || item.nome : item.nome;
+      const registro = produtos.get(nome) || { nome, produzido: 0, perdido: 0 };
+      registro[ehPerda ? 'perdido' : 'produzido'] += item.quantidade || 0;
+      produtos.set(nome, registro);
+    }
   }
 
   totais.resultado = totais.produzido - totais.perdido;
@@ -66,6 +69,7 @@ export function agregar(registros) {
   return {
     totais,
     porDia: [...dias.values()].sort((a, b) => a.data.localeCompare(b.data)),
+    porHora: [...horas.entries()].map(([hora, produzido]) => ({ hora, produzido })).sort((a, b) => a.hora.localeCompare(b.hora)),
     porProduto: [...produtos.values()].sort((a, b) => b.produzido - a.produzido),
   };
 }
@@ -282,5 +286,46 @@ export function indicadores(container, totais) {
     .join('');
 }
 
-/** Reexporta a leitura crua para quem só quer a lista completa. */
-export { listarRegistros };
+/** Colunas simples: quanto foi produzido em cada faixa de horário. */
+export function graficoHoras(container, porHora) {
+  container.innerHTML = '';
+  if (!porHora.length) {
+    container.innerHTML = '<p class="ajuda">Sem lançamentos com horário no período.</p>';
+    return;
+  }
+
+  const altura = 200;
+  const margem = { topo: 16, direita: 12, baixo: 30, esquerda: 44 };
+  const largura = Math.max(container.clientWidth || 320, margem.esquerda + margem.direita + porHora.length * 34);
+  const faixa = (largura - margem.esquerda - margem.direita) / porHora.length;
+  const espessura = Math.min(ESPESSURA_MAXIMA, faixa * 0.6);
+  const alturaPlot = altura - margem.topo - margem.baixo;
+  const { topo, passos } = escala(Math.max(...porHora.map((h) => h.produzido)));
+  const y = (valor) => margem.topo + alturaPlot - (valor / topo) * alturaPlot;
+
+  const svg = el('svg', { class: 'grafico', width: largura, height: altura, role: 'img' });
+
+  for (const passo of passos) {
+    svg.appendChild(el('line', { class: 'grade', x1: margem.esquerda, x2: largura - margem.direita, y1: y(passo), y2: y(passo) }));
+    svg.appendChild(texto(margem.esquerda - 8, y(passo) + 4, numero.format(passo), 'rotulo eixo-y'));
+  }
+
+  porHora.forEach((faixaHora, i) => {
+    const centro = margem.esquerda + faixa * i + faixa / 2;
+    const base = margem.topo + alturaPlot;
+    const alturaBarra = Math.max(2, base - y(faixaHora.produzido));
+    svg.appendChild(
+      comDica(
+        el('path', {
+          class: 'marca serie-1',
+          d: caminhoBarra(centro - espessura / 2, base - alturaBarra, espessura, alturaBarra, 4),
+        }),
+        [`<strong>${faixaHora.hora}h</strong>`, `Produzido: ${numero.format(faixaHora.produzido)}`],
+      ),
+    );
+    svg.appendChild(texto(centro, altura - 10, `${faixaHora.hora}h`, 'rotulo eixo-x'));
+  });
+
+  svg.appendChild(el('line', { class: 'base', x1: margem.esquerda, x2: largura - margem.direita, y1: y(0), y2: y(0) }));
+  container.appendChild(svg);
+}

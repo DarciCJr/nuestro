@@ -36,6 +36,7 @@
     <button type="button" id="btn-ver-painel" class="btn btn-claro">Painel</button>
     <button type="button" id="btn-config" class="btn btn-claro">Configurações</button>
     <button type="button" id="btn-bloquear" class="btn btn-claro" title="Bloquear o sistema">🔒 Bloquear</button>
+    <button type="button" id="sincronia" class="sincronia" title="Sincronizar agora">☁ —</button>
   </div>
 </header>
 
@@ -50,52 +51,20 @@
       <span>Responsável</span>
       <input type="text" id="campo-responsavel" placeholder="Nome do responsável">
     </label>
-    <label class="campo campo-hora">
-      <span>Hora Produção 1</span>
-      <input type="time" id="hora-1">
-    </label>
-    <label class="campo campo-hora">
-      <span>Hora Produção 2</span>
-      <input type="time" id="hora-2">
-    </label>
-    <label class="campo campo-hora">
-      <span>Hora Produção 3</span>
-      <input type="time" id="hora-3">
-    </label>
   </section>
 
   <div class="tabela-rolagem">
     <table class="planilha" id="planilha">
-      <thead>
-        <tr>
-          <th class="col-produto">Produto</th>
-          <th>Produção 1</th>
-          <th>Produção 2</th>
-          <th>Produção 3</th>
-          <th class="col-total">Total</th>
-          <th class="col-perdido">Perdido</th>
-          <th class="col-resultado">Resultado</th>
-        </tr>
-      </thead>
-      <tbody id="corpo-planilha"><!-- gerado por assets/js/planilha.js --></tbody>
-      <tfoot>
-        <tr>
-          <th class="col-produto">Totais do dia</th>
-          <th id="rodape-p1">0</th>
-          <th id="rodape-p2">0</th>
-          <th id="rodape-p3">0</th>
-          <th id="rodape-total">0</th>
-          <th id="rodape-perdido">0</th>
-          <th id="rodape-resultado">0</th>
-        </tr>
-      </tfoot>
+      <thead id="cabecalho-planilha"><!-- gerado por assets/js/planilha.js --></thead>
+      <tbody id="corpo-planilha"></tbody>
+      <tfoot id="rodape-planilha"></tfoot>
     </table>
   </div>
 
   <p class="nota-folha">
-    Preencher cada <strong>PRODUÇÃO</strong> conforme as reposições do dia e anotar o respectivo <strong>horário</strong>.
-    Ao final: <strong>TOTAL</strong> = soma das produções e <strong>RESULTADO</strong> = TOTAL − PERDIDO.
-    As linhas em branco podem ser usadas para outros produtos.
+    Cada coluna é uma <strong>reposição</strong> com o seu <strong>horário</strong> — use <em>Novo horário</em> a cada fornada.
+    <strong>TOTAL</strong> = soma das produções e <strong>RESULTADO</strong> = TOTAL − PERDIDO.
+    Ao salvar, cada horário vira um lançamento guardado na nuvem e visível nos outros aparelhos.
   </p>
 
   <label class="campo campo-observacoes">
@@ -105,7 +74,8 @@
 
   <section class="barra-acoes">
     <button type="button" id="btn-importar" class="btn btn-primario">📷 Importar imagem e analisar</button>
-    <button type="button" id="btn-salvar" class="btn btn-primario">💾 Cadastrar controle</button>
+    <button type="button" id="btn-nova-coluna" class="btn">➕ Novo horário</button>
+    <button type="button" id="btn-salvar" class="btn btn-primario">💾 Salvar lançamentos</button>
     <button type="button" id="btn-csv" class="btn">Exportar CSV</button>
     <button type="button" id="btn-imprimir" class="btn">Imprimir</button>
     <button type="button" id="btn-limpar" class="btn btn-perigo">Limpar folha</button>
@@ -152,26 +122,32 @@
   </section>
 
   <section class="cartao-grafico">
+    <h2>Produção por hora</h2>
+    <p class="ajuda">Soma de todas as reposições do período, pelo horário em que foram lançadas.</p>
+    <div class="area-grafico" id="area-horas"></div>
+  </section>
+
+  <section class="cartao-grafico">
     <h2>Produtos mais produzidos no período</h2>
     <div class="area-grafico" id="area-produtos"></div>
   </section>
 
   <section class="cartao-grafico">
-    <h2>Controles do período</h2>
+    <h2>Lançamentos do período</h2>
     <div class="tabela-rolagem">
       <table class="resultado" id="tabela-painel">
         <thead>
-          <tr><th>Data</th><th>Responsável</th><th>Produzido</th><th>Perdido</th><th>Resultado</th><th>Perda</th><th></th></tr>
+          <tr><th>Data</th><th>Hora</th><th>Tipo</th><th>Responsável</th><th>Itens</th><th>Quantidade</th><th>Aparelho</th><th></th></tr>
         </thead>
         <tbody id="corpo-painel"></tbody>
       </table>
     </div>
-    <p class="ajuda" id="painel-vazio" hidden>Nenhum controle cadastrado no período selecionado.</p>
+    <p class="ajuda" id="painel-vazio" hidden>Nenhum lançamento no período selecionado.</p>
     <div class="barra-acoes">
       <button type="button" id="btn-csv-periodo" class="btn">Exportar período (CSV)</button>
       <button type="button" id="btn-exportar-tudo" class="btn">Exportar tudo (JSON)</button>
     </div>
-    <p class="ajuda">Os controles ficam salvos <strong>neste aparelho</strong> (navegador). Cada celular tem o seu próprio histórico.</p>
+    <p class="ajuda" id="nota-armazenamento">Os lançamentos ficam guardados no aparelho <em>e</em> na nuvem — qualquer celular ou navegador com a senha vê o mesmo histórico.</p>
   </section>
 
 </main>
@@ -211,6 +187,12 @@
           </select>
         </label>
       </div>
+
+      <label class="campo">
+        <span>Nome deste aparelho</span>
+        <input type="text" id="config-aparelho" placeholder="Ex.: Celular da produção">
+      </label>
+      <p class="ajuda">Aparece no painel junto de cada lançamento, para saber de onde veio.</p>
 
       <details class="bloco-senha">
         <summary>Alterar senha de acesso</summary>
