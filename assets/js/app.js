@@ -112,7 +112,8 @@ async function entrar() {
   botao.textContent = 'Entrando…';
 
   try {
-    await sincronizarAcesso(); // senha e chave da API valem para todos os aparelhos
+    // senha e chave da API valem para todos os aparelhos
+    const naNuvem = await sincronizarAcesso();
 
     if (!(await cofre.senhaCorreta(senha))) {
       erro.textContent = 'Senha incorreta.';
@@ -124,6 +125,12 @@ async function entrar() {
     estado.senha = senha;
     estado.desbloqueado = true;
     await carregarChaveApi(senha);
+
+    // chave cadastrada só neste aparelho (ou antes da nuvem existir): publica sozinho
+    if (estado.apiKey && !naNuvem.temChaveNaNuvem) {
+      const publicada = await publicarChave();
+      if (publicada) avisar('A chave da API deste aparelho foi compartilhada com os outros.', 'ok');
+    }
 
     $('tela-login').hidden = true;
     $('topo').hidden = false;
@@ -155,6 +162,7 @@ async function sincronizarAcesso() {
     $('config-modelo').value = api.modelo || $('config-modelo').value;
     $('config-esforco').value = api.esforco || $('config-esforco').value;
   }
+  return { temChaveNaNuvem: Boolean(api?.envelope) };
 }
 
 async function carregarChaveApi(senha) {
