@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuestro Gusto — Produção / Controle Diário</title>
+<link rel="stylesheet" href="assets/css/estilo.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🥐</text></svg>">
+</head>
+<body>
+
+<header class="topo">
+  <div class="marca">
+    <span class="marca-sol">☀</span>
+    <div>
+      <strong>Nuestro Gusto</strong>
+      <small>Produção — Controle Diário</small>
+    </div>
+  </div>
+  <div class="topo-acoes">
+    <button type="button" id="btn-historico" class="btn btn-claro">Histórico</button>
+    <button type="button" id="btn-config" class="btn btn-claro">Configurações</button>
+  </div>
+</header>
+
+<main class="folha" id="folha">
+
+  <section class="cabecalho-folha">
+    <label class="campo">
+      <span>Data</span>
+      <input type="date" id="campo-data">
+    </label>
+    <label class="campo">
+      <span>Responsável</span>
+      <input type="text" id="campo-responsavel" placeholder="Nome do responsável">
+    </label>
+    <label class="campo campo-hora">
+      <span>Hora Produção 1</span>
+      <input type="time" id="hora-1">
+    </label>
+    <label class="campo campo-hora">
+      <span>Hora Produção 2</span>
+      <input type="time" id="hora-2">
+    </label>
+    <label class="campo campo-hora">
+      <span>Hora Produção 3</span>
+      <input type="time" id="hora-3">
+    </label>
+  </section>
+
+  <div class="tabela-rolagem">
+    <table class="planilha" id="planilha">
+      <thead>
+        <tr>
+          <th class="col-produto">Produto</th>
+          <th>Produção 1</th>
+          <th>Produção 2</th>
+          <th>Produção 3</th>
+          <th class="col-total">Total</th>
+          <th class="col-perdido">Perdido</th>
+          <th class="col-resultado">Resultado</th>
+        </tr>
+      </thead>
+      <tbody id="corpo-planilha"><!-- gerado por assets/js/planilha.js --></tbody>
+      <tfoot>
+        <tr>
+          <th class="col-produto">Totais do dia</th>
+          <th id="rodape-p1">0</th>
+          <th id="rodape-p2">0</th>
+          <th id="rodape-p3">0</th>
+          <th id="rodape-total">0</th>
+          <th id="rodape-perdido">0</th>
+          <th id="rodape-resultado">0</th>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <p class="nota-folha">
+    Preencher cada <strong>PRODUÇÃO</strong> conforme as reposições do dia e anotar o respectivo <strong>horário</strong>.
+    Ao final: <strong>TOTAL</strong> = soma das produções e <strong>RESULTADO</strong> = TOTAL − PERDIDO.
+    As linhas em branco podem ser usadas para outros produtos.
+  </p>
+
+  <label class="campo campo-observacoes">
+    <span>Observações</span>
+    <textarea id="campo-observacoes" rows="3"></textarea>
+  </label>
+
+  <section class="barra-acoes">
+    <button type="button" id="btn-importar" class="btn btn-primario">📷 Importar imagem e analisar</button>
+    <button type="button" id="btn-salvar" class="btn btn-primario">💾 Cadastrar controle</button>
+    <button type="button" id="btn-csv" class="btn">Exportar CSV</button>
+    <button type="button" id="btn-imprimir" class="btn">Imprimir</button>
+    <button type="button" id="btn-limpar" class="btn btn-perigo">Limpar folha</button>
+  </section>
+
+</main>
+
+<!-- ============================ Configurações ============================ -->
+<dialog id="dlg-config" class="modal">
+  <form method="dialog" class="modal-conteudo" id="form-config">
+    <h2>Configurações — API da Claude</h2>
+
+    <div id="config-bloqueado">
+      <p class="ajuda">Área protegida. Informe a senha para cadastrar ou alterar a chave da API.</p>
+      <label class="campo">
+        <span>Senha</span>
+        <input type="password" id="config-senha" autocomplete="current-password">
+      </label>
+      <p class="erro" id="config-erro-senha" hidden></p>
+      <menu class="modal-acoes">
+        <button type="button" class="btn" data-fechar>Cancelar</button>
+        <button type="button" id="btn-desbloquear" class="btn btn-primario">Desbloquear</button>
+      </menu>
+    </div>
+
+    <div id="config-aberto" hidden>
+      <label class="campo">
+        <span>Chave da API (sk-ant-…)</span>
+        <input type="password" id="config-chave" placeholder="sk-ant-api03-…" autocomplete="off">
+      </label>
+      <p class="ajuda">
+        A chave é gravada <strong>criptografada</strong> (AES-GCM, senha derivada por PBKDF2) apenas neste navegador.
+        Nada é enviado para servidores próprios — as requisições vão direto para <code>api.anthropic.com</code>.
+      </p>
+
+      <div class="linha-dupla">
+        <label class="campo">
+          <span>Modelo</span>
+          <select id="config-modelo">
+            <option value="claude-opus-5">Claude Opus 5 (recomendado)</option>
+            <option value="claude-sonnet-5">Claude Sonnet 5 (mais barato)</option>
+            <option value="claude-haiku-4-5">Claude Haiku 4.5 (mais rápido)</option>
+          </select>
+        </label>
+        <label class="campo">
+          <span>Esforço de análise</span>
+          <select id="config-esforco">
+            <option value="medium">Médio</option>
+            <option value="high" selected>Alto</option>
+            <option value="xhigh">Muito alto</option>
+          </select>
+        </label>
+      </div>
+
+      <details class="bloco-senha">
+        <summary>Alterar senha de acesso</summary>
+        <div class="linha-dupla">
+          <label class="campo">
+            <span>Nova senha</span>
+            <input type="password" id="config-nova-senha" autocomplete="new-password">
+          </label>
+          <label class="campo">
+            <span>Repetir nova senha</span>
+            <input type="password" id="config-nova-senha2" autocomplete="new-password">
+          </label>
+        </div>
+        <button type="button" id="btn-trocar-senha" class="btn">Salvar nova senha</button>
+      </details>
+
+      <p class="status" id="config-status" hidden></p>
+
+      <menu class="modal-acoes">
+        <button type="button" id="btn-remover-chave" class="btn btn-perigo">Remover chave</button>
+        <button type="button" id="btn-testar" class="btn">Testar conexão</button>
+        <button type="button" class="btn" data-fechar>Fechar</button>
+        <button type="button" id="btn-salvar-chave" class="btn btn-primario">Salvar chave</button>
+      </menu>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============================ Importar imagem ============================ -->
+<dialog id="dlg-importar" class="modal">
+  <div class="modal-conteudo">
+    <h2>Importar imagem</h2>
+
+    <div class="linha-dupla">
+      <label class="campo">
+        <span>O que há na foto</span>
+        <select id="imp-tipo">
+          <option value="bandeja">Bandeja / vitrine de medialunas (contar unidades)</option>
+          <option value="planilha">Planilha preenchida à mão (ler os números)</option>
+        </select>
+      </label>
+      <label class="campo" id="campo-coluna">
+        <span>Lançar em</span>
+        <select id="imp-coluna">
+          <option value="1">Produção 1</option>
+          <option value="2">Produção 2</option>
+          <option value="3">Produção 3</option>
+        </select>
+      </label>
+    </div>
+
+    <label class="campo">
+      <span>Como aplicar</span>
+      <select id="imp-modo">
+        <option value="substituir">Substituir os valores da coluna</option>
+        <option value="somar">Somar aos valores já lançados</option>
+      </select>
+    </label>
+
+    <label class="campo">
+      <span>Imagem</span>
+      <input type="file" id="imp-arquivo" accept="image/*" capture="environment">
+    </label>
+
+    <div class="previa" id="imp-previa" hidden><img id="imp-previa-img" alt="Prévia da imagem selecionada"></div>
+
+    <p class="status" id="imp-status" hidden></p>
+
+    <div id="imp-resultado" hidden>
+      <h3>Itens identificados</h3>
+      <div class="tabela-rolagem">
+        <table class="resultado" id="tabela-resultado">
+          <thead>
+            <tr><th>Aplicar</th><th>Produto</th><th>Visto na imagem</th><th>Qtd.</th><th>Confiança</th></tr>
+          </thead>
+          <tbody id="corpo-resultado"></tbody>
+        </table>
+      </div>
+      <p class="ajuda" id="imp-observacoes"></p>
+    </div>
+
+    <menu class="modal-acoes">
+      <button type="button" class="btn" data-fechar>Fechar</button>
+      <button type="button" id="btn-analisar" class="btn btn-primario">Analisar imagem</button>
+      <button type="button" id="btn-aplicar" class="btn btn-primario" hidden>Aplicar na planilha</button>
+    </menu>
+  </div>
+</dialog>
+
+<!-- ============================ Histórico ============================ -->
+<dialog id="dlg-historico" class="modal">
+  <div class="modal-conteudo">
+    <h2>Controles cadastrados</h2>
+    <div class="tabela-rolagem">
+      <table class="resultado" id="tabela-historico">
+        <thead>
+          <tr><th>Data</th><th>Responsável</th><th>Total</th><th>Perdido</th><th>Resultado</th><th></th></tr>
+        </thead>
+        <tbody id="corpo-historico"></tbody>
+      </table>
+    </div>
+    <p class="ajuda" id="historico-vazio" hidden>Nenhum controle cadastrado neste navegador ainda.</p>
+    <menu class="modal-acoes">
+      <button type="button" id="btn-exportar-tudo" class="btn">Exportar tudo (JSON)</button>
+      <button type="button" class="btn" data-fechar>Fechar</button>
+    </menu>
+  </div>
+</dialog>
+
+<div id="aviso" class="aviso" hidden></div>
+
+<script type="module" src="assets/js/app.js"></script>
+</body>
+</html>
