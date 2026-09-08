@@ -25,7 +25,8 @@ A aba **Painel** reúne os controles já cadastrados:
 - **Produção por dia**: colunas empilhadas (resultado + perdido = produzido), com detalhe ao tocar/passar o mouse.
 - **Produção por hora**: soma das reposições por faixa de horário no período.
 - **Produtos mais produzidos** no período, em ranking.
-- **Tabela dos lançamentos** (data, hora, tipo, responsável, quantidade e aparelho de origem), com
+- **Tabela dos lançamentos** (data, hora, tipo, responsável, quantidade e aparelho de origem; 📷 marca
+  o que veio de foto), com
   botão para reabrir o dia na folha ou excluir o lançamento, além de exportar o período em CSV.
 
 ## Lançamentos por hora e sincronia entre aparelhos
@@ -63,6 +64,14 @@ celular ou navegador com a senha vê o mesmo histórico:
   gravação mais recente.
 - **Exclusão** é lógica (`removido`), para que sumir num aparelho suma nos outros.
 
+### Instalar no celular (PWA)
+
+A página é instalável: no celular, *Adicionar à tela de início* (Android: menu do Chrome; iPhone:
+Compartilhar → Adicionar à Tela de Início) cria o atalho com ícone próprio e abre em tela cheia, sem
+barra do navegador. Um *service worker* ([`sw.js`](sw.js)) guarda os arquivos do app: online sempre
+busca a versão mais nova (rede primeiro), e sem sinal ele abre pelo que está guardado — os
+lançamentos feitos offline ficam na fila e sobem depois.
+
 ### Chave da API e senha compartilhadas
 
 Cadastrar a chave uma vez basta para a padaria inteira:
@@ -74,6 +83,10 @@ Cadastrar a chave uma vez basta para a padaria inteira:
 - **Trocar a senha** vale para todos: o novo hash vai para a linha `acesso` e o envelope é recifrado
   com a senha nova. **Remover a chave** também remove da nuvem.
 - Sem internet, cada aparelho continua com o que já tinha gravado localmente.
+- Se um aparelho abriu antes de a chave existir, ele **busca de novo** ao tentar analisar uma foto ou
+  ao abrir Configurações — não precisa recarregar a página nem cadastrar de novo.
+- Um aparelho que tenha a chave só localmente (cadastro anterior à nuvem) a **publica sozinho** no
+  próximo login ou ao abrir Configurações.
 
 > Como a senha do app é a única coisa que protege esse envelope, vale trocar a senha padrão por uma
 > que não circule fora da equipe (Configurações → Alterar senha de acesso).
@@ -175,6 +188,9 @@ assets/js/dados.js             lançamentos: armazenamento local, fila offline e
 assets/js/nuvem.js             acesso REST à tabela do Supabase
 assets/js/config.js            endereço e chave publicável da nuvem
 assets/js/painel.js            agregações, filtros e gráficos do painel (SVG puro)
+sw.js                          service worker (abre offline, rede primeiro)
+manifest.webmanifest           dados do app instalável no celular
+assets/icones/                 ícones do atalho na tela de início
 assets/js/app.js               ligação da interface
 .github/workflows/pages.yml    publicação automática no GitHub Pages
 ```

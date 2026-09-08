@@ -18,7 +18,10 @@ const estado = {
   tipoAnalise: 'bandeja',
   alterado: false,
   assinaturaDoDia: '',
+  colunasDaImagem: new Set(), // horários preenchidos pela análise de foto
 };
+
+const CHAVE_RESPONSAVEL = 'nuestro_gusto:responsavel';
 
 const $ = (id) => document.getElementById(id);
 
@@ -52,6 +55,7 @@ function mensagemErro(erro) {
 // ------------------------------------------------------------------ início
 
 function iniciar() {
+  registrarServiceWorker();
   ligarLogin();
   planilha.montarPlanilha(
     { corpo: $('corpo-planilha'), cabecalho: $('cabecalho-planilha'), rodape: $('rodape-planilha') },
@@ -79,6 +83,12 @@ function iniciar() {
     e.preventDefault();
     e.returnValue = '';
   });
+}
+
+/** Permite abrir o app (e instalá-lo no celular) mesmo sem internet. */
+function registrarServiceWorker() {
+  if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 function marcarAlterado() {
@@ -209,15 +219,28 @@ function ligarConfiguracoes() {
   }
 }
 
-function abrirConfiguracoes(mensagem = '') {
+async function abrirConfiguracoes(mensagem = '') {
   $('config-chave').value = estado.apiKey || '';
   $('config-aparelho').value = dados.dispositivo();
+  status($('config-status'), mensagem || 'Verificando a chave compartilhada…', 'info');
+  $('dlg-config').showModal();
+  if (mensagem) return;
+
+  await garantirChave();
+  $('config-chave').value = estado.apiKey || '';
+
+  const naNuvem = await sincronizarAcesso();
+  if (estado.apiKey && !naNuvem.temChaveNaNuvem) await publicarChave(); // ainda só local: publica
+
   status(
     $('config-status'),
-    mensagem || (cofre.temChaveGravada() ? 'Chave cadastrada neste navegador.' : 'Nenhuma chave cadastrada ainda.'),
-    'info',
+    estado.apiKey
+      ? naNuvem.temChaveNaNuvem
+        ? 'Chave da padaria ativa — vale para todos os aparelhos.'
+        : 'Chave deste aparelho publicada agora para os demais.'
+      : 'Nenhuma chave cadastrada ainda. Cadastre uma vez e todos os aparelhos herdam.',
+    estado.apiKey ? 'ok' : 'info',
   );
-  $('dlg-config').showModal();
 }
 
 async function salvarChave() {
@@ -309,9 +332,21 @@ function ligarSincronia() {
   dados.aoMudar(desenharSincronia);
   dados.aoMudar(atualizarFolhaSeParada);
   $('sincronia').addEventListener('click', async () => {
-    await dados.sincronizar({ silencioso: false });
+    const resultado = await dados.sincronizar({ silencioso: false });
     if (!$('painel').hidden) desenharPainel();
     else await carregarDia($('campo-data').value, { manterEdicao: true });
+
+    if (resultado.situacao === 'ok') {
+      const { enviados, recebidos } = resultado;
+      avisar(
+        enviados || recebidos
+          ? `Sincronizado: ${enviados} enviado(s), ${recebidos} recebido(s).`
+          : 'Tudo sincronizado.',
+        'ok',
+      );
+    } else {
+      avisar(dados.estadoSincronia.mensagem || 'Não foi possível sincronizar agora.', 'erro');
+    }
   });
   desenharSincronia();
 }
@@ -357,7 +392,8 @@ async function carregarDia(data, { manterEdicao = false } = {}) {
   atualizarColunasDaImportacao();
 
   const comResponsavel = lancamentos.find((l) => l.responsavel);
-  if (comResponsavel) $('campo-responsavel').value = comResponsavel.responsavel;
+  $('campo-responsavel').value =
+    comResponsavel?.responsavel || localStorage.getItem(CHAVE_RESPONSAVEL) || '';
   const comObservacoes = lancamentos.find((l) => l.observacoes);
   $('campo-observacoes').value = comObservacoes?.observacoes || '';
 
@@ -372,6 +408,11 @@ async function salvarDia() {
   }
 
   const responsavel = $('campo-responsavel').value.trim();
+  if (!responsavel && !confirm('O campo Responsável está vazio. Salvar assim mesmo?')) {
+    $('campo-responsavel').focus();
+    return;
+  }
+  if (responsavel) localStorage.setItem(CHAVE_RESPONSAVEL, responsavel);
   const observacoes = $('campo-observacoes').value.trim();
   const dia = planilha.lerDia();
   const existentes = new Map(dados.doDia(data).map((l) => [l.id, l]));
@@ -385,7 +426,7 @@ async function salvarDia() {
         hora: coluna.hora || '',
         responsavel,
         tipo: 'producao',
-        origem: 'manual',
+        origem: estado.colunasDaImagem.has(coluna.id) ? 'imagem' : 'manual',
         observacoes,
         itens: coluna.itens,
       };
@@ -438,9 +479,9 @@ function atualizarColunasDaImportacao() {
 }
 
 function ligarImportacao() {
-  $('btn-importar').addEventListener('click', () => {
-    if (!estado.apiKey) {
-      avisar('Cadastre a chave da API em Configurações para usar a análise de imagem.', 'erro');
+  $('btn-importar').addEventListener('click', async () => {
+    if (!(await garantirChave())) {
+      avisar('Nenhuma chave da API cadastrada ainda. Cadastre uma vez — os outros aparelhos herdam.', 'erro');
       abrirConfiguracoes();
       return;
     }
@@ -467,6 +508,20 @@ function ligarImportacao() {
 
   $('btn-analisar').addEventListener('click', analisar);
   $('btn-aplicar').addEventListener('click', aplicarAnalise);
+}
+
+/**
+ * Garante que este aparelho tem a chave da API: se não tiver, busca de novo a
+ * configuração compartilhada (o cadastro pode ter sido feito em outro aparelho
+ * depois desta aba abrir, ou a nuvem pode ter falhado no login).
+ */
+async function garantirChave() {
+  if (estado.apiKey) return true;
+  const naNuvem = await sincronizarAcesso();
+  if (!naNuvem.temChaveNaNuvem) return false;
+  await carregarChaveApi(estado.senha);
+  if (estado.apiKey) avisar('Chave da API recuperada da nuvem.', 'ok');
+  return Boolean(estado.apiKey);
 }
 
 function abrirImportacao() {
@@ -625,6 +680,7 @@ function aplicarAnalise() {
     const usadas = [0, 1, 2].filter((i) => linhas.some((tr) => Number(tr.querySelector(`.v${i + 1}`).value) > 0));
     planilha.definirColunas(usadas.map((i) => ({ id: crypto.randomUUID(), hora: horas[i] || '' })));
     const colunas = planilha.colunas();
+    for (const coluna of colunas) estado.colunasDaImagem.add(coluna.id);
 
     for (const tr of linhas) {
       const id = tr.dataset.produto;
@@ -641,6 +697,7 @@ function aplicarAnalise() {
     }
   } else {
     const colunaId = $('imp-coluna').value;
+    estado.colunasDaImagem.add(colunaId);
     if (modo === 'substituir') planilha.limparColuna(colunaId);
     for (const tr of linhas) {
       const quantidade = Number(tr.querySelector('.v1').value) || 0;
@@ -682,6 +739,12 @@ function ligarAcoes() {
   for (const campo of ['campo-responsavel', 'campo-observacoes']) {
     $(campo).addEventListener('input', marcarAlterado);
   }
+
+  // quem lança costuma ser sempre o mesmo neste aparelho
+  $('campo-responsavel').addEventListener('change', () => {
+    const nome = $('campo-responsavel').value.trim();
+    if (nome) localStorage.setItem(CHAVE_RESPONSAVEL, nome);
+  });
 
   $('btn-csv').addEventListener('click', () => {
     planilha.baixarArquivo(
@@ -825,7 +888,8 @@ function montarTabelaPainel(lancamentos) {
     const tr = document.createElement('tr');
     tr.appendChild(celula(dataBr(lancamento.data)));
     tr.appendChild(celula(lancamento.hora || '—'));
-    tr.appendChild(celula(lancamento.tipo === 'perda' ? 'Perda' : 'Produção'));
+    const rotuloTipo = lancamento.tipo === 'perda' ? 'Perda' : 'Produção';
+    tr.appendChild(celula(lancamento.origem === 'imagem' ? `📷 ${rotuloTipo}` : rotuloTipo));
     tr.appendChild(celula(lancamento.responsavel || '—'));
     tr.appendChild(celula((lancamento.itens || []).length));
     tr.appendChild(celula(painel.totalDoLancamento(lancamento)));
