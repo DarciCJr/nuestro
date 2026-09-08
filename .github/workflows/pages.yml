@@ -25,6 +25,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          # liga o Pages automaticamente na primeira execução
+          enablement: true
       - name: Empacotar o site estático
         uses: actions/upload-pages-artifact@v3
         with:
